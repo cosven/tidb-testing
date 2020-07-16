@@ -1,0 +1,83 @@
+apiVersion: pingcap.com/v1alpha1
+kind: TidbCluster
+metadata:
+  name: ctc
+spec:
+  # configUpdateStrategy: RollingUpdate
+  enablePVReclaim: false
+  imagePullPolicy: Always
+  pvReclaimPolicy: Delete
+  timezone: UTC
+  pd:
+    image: pingcap/pd:release-4.0-nightly
+    replicas: 3
+    limits:
+      cpu: "8"
+      memory: "8Gi"
+    requests:
+      storage: 10Gi
+    storageClassName: local-storage
+    config: {}
+  tidb:
+    image: pingcap/tidb:release-4.0-nightly
+    replicas: 1
+    service:
+      type: NodePort
+    limits:
+      cpu: "16"
+      memory: "16Gi"
+    config: {}
+  tiflash:
+    image: pingcap/tiflash:v4.0.2
+    replicas: 1
+    storageClaims:
+    - resources:
+        requests:
+          storage: 5Gi
+        limits:
+          cpu: "3"
+          memory: "8Gi"
+      storageClassName: local-storage
+  tikv:
+    image: pingcap/tikv:release-4.0-nightly
+    config:
+      log-level: info
+      coprocessor:
+        region-max-size: "16MB"
+        region-split-size: "10MB"
+        region-max-keys: 144000
+        region-split-keys: 96000
+      raftstore:
+        hibernate-regions: true
+    replicas: 4
+    requests:
+      storage: 50Gi
+    limits:
+      cpu: "16"
+      memory: "32Gi"
+    storageClassName: local-storage
+
+---
+
+apiVersion: pingcap.com/v1alpha1
+kind: TidbMonitor
+metadata:
+  name: ctc
+spec:
+  clusters:
+  - name: ctc
+  prometheus:
+    baseImage: prom/prometheus
+    version: v2.18.1
+  grafana:
+    baseImage: grafana/grafana
+    version: 6.1.6
+    service:
+      type: NodePort
+  initializer:
+    baseImage: pingcap/tidb-monitor-initializer
+    version: v4.0.2
+  reloader:
+    baseImage: pingcap/tidb-monitor-reloader
+    version: v1.0.1
+  imagePullPolicy: IfNotPresent

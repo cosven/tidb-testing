@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+
+"""
+Install requires
+----------------
+
+pip3 install aiohttp pyyaml requests click
+
+Usage
+-----
+
+Check latest commit sha
+
+
+
+"""
+
+import asyncio
+import json
+import re
+import sys
+import os
+from enum import Enum
+from functools import wraps
+
+import aiohttp
+import click
+import yaml
+
+from jira import JIRA
+
+
+class Projects(Enum):
+    tikv = 'tikv/tikv'
+    tidb = 'pingcap/tidb'
+    pd = 'pingcap/pd'
+    tiflash = 'pingcap/tiflash'
+
+    binlog = 'pingcap/tidb-binlog'
+    tools = 'pingcap/tidb-tools'
+    lightning = 'pingcap/tidb-lightning'
+
+    importer = 'tikv/importer'
+    br = 'pingcap/br'
+    ticdc = 'pingcap/ticdc'
+
+
+DBFILE = 'pr2jira.db'
+
+JIRA_URI = 'https://internal.pingcap.net/jira'
+JIRA_USERNAME = os.getenv('JIRA_USERNAME')
+JIRA_PASSWORD = os.getenv('JIRA_PASSWORD')
+
+with open(os.path.expanduser('~/.config/gh/config.yml')) as f:
+    data = yaml.safe_load(f)
+    GITHUB_TOKEN = data['hosts']['github.com']['oauth_token']
+
+GITHUB_HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"}
+
+
+class new_session:
+    def __init__(self):
+        self._s = aiohttp.ClientSession(headers=GITHUB_HEADERS)
+
+    async def __aenter__(self):
+        return self._s
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self._s.close()
+
+
+def coro(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(f(*args, **kwargs))
+    return wrapper
+
+
+def cook_repo_with_defaults(repo):
+    if '/' not in repo:
+        owner = 'pingcap'
+        if repo == 'tikv':
+            owner = 'tikv'
+        return f'{owner}/{repo}'
+    return repo
+
+
+def cook_binary_url(component, sha1):
+    tar_name = f'{component}-server'
+    return f'http://fileserver.pingcap.net/download/builds/pingcap/'\
+        f'{component}/{sha1}/centos7/{tar_name}.tar.gz'
+
+
+class GithubException(Exception):
+    pass
+
+
+class GithubClient:
+    def __init__(self, session, timeout=2):
+        self._s = session
+        self._timeout = timeout
+        self._base_uri = 'https://api.github.com'
+
+    async def get_commit(self, owner, repo, ref, **kwargs):
+        url = f'{self._base_uri}/repos/{owner}/{repo}/commits/{ref}'
+        timeout = kwargs.get('timeout') or self._timeout
+        async with self._s.get(url, timeout=timeout) as resp:
+            if resp.status != 200:
+                breakpoint()
+                raise GithubException
+            return await resp.json()
+
+
+async def list_repo_latest_commits(
+        s, repo, sha='master', limit=None, since=None, timeout=5):
+    """
+    yield (sha, msg_title)
+    """
+    repo = cook_repo_with_defaults(repo)
+    params = {'sha': sha}
+    if since is not None:
+        params['since'] = since
+    url = f'https://api.github.com/repos/{repo}/commits'
+    async with s.get(url, timeout=timeout, params=params) as resp:
+        commits = await resp.json()
+        if limit is not None:
+            commits = commits[:limit]
+        for commit in commits:
+            yield commit
+
+
+async def get_repo_commit(s, repo, sha1, timeout=2):
+    """
+    return (msg_title, author_name, date)
+    """
+    repo = cook_repo_with_defaults(repo)
+    url = f'https://api.github.com/repos/{repo}/commits/{sha1}'
+    async with s.get(url, timeout=timeout) as resp:
+        commit = await resp.json()
+        commit = commit['commit']
+        author = commit['author']
+        author_name = author['name']
+        date = author['date']
+        msg_title = commit['message'].split('\n\n')[0]
+        return (msg_title, author_name, date)
+
+
+async def get_latest_binary_sha1(
+        s, repo, branch='master', timeout=2):
+    url = f'http://fileserver.pingcap.net/download/refs/pingcap/{repo}/{branch}/sha1'
+    async with s.get(url) as resp:
+        return await resp.text()
+
+
+#################
+# jira issues
+#################
+
+def create_jira_issue(summary, description,
+                      parent_task='QADEV-655', project='QADEV'):
+    fields = {
+        'project': {'key': project},
+        'summary': summary,
+        'description': description,
+        'issuetype': 'Sub-task',
+        'parent': {'key': parent_task}
+    }
+    jira = JIRA(JIRA_URI, auth=(JIRA_USERNAME, JIRA_PASSWORD))
+    return jira.create_issue(fields=fields)
+
+
+def is_issue_created(sha):
+    created = False
+    with open(DBFILE) as f:
+        for line in f:
+            if line.startswith(sha):
+                created = True
+                break
+    return created
+
+
+def save_created_issue(sha, issue_key):
+    with open(DBFILE, 'a') as f:
+        f.write(f'{sha} {issue_key}\n')
+
+
+@click.group()
+def cli():
+    pass
+
+
+##########################
+# sub commands
+##########################
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@click.option('--rewrite', is_flag=True, default=False)
+@coro
+async def check_hash(filename, rewrite):
+    """check if the hash in FILENAME is the latest one"""
+    with open(filename) as f:
+        origin_js = json.load(f)
+        js = origin_js.copy()
+
+    release_branch = js.pop('release_branch')
+    js.pop('tidb_old_commits')
+
+    async with new_session() as s:
+        client = GithubClient(s)
+
+        async def _cmp(name, sha):
+            project = getattr(Projects, name)
+            branch = release_branch
+            # tools use master as it's release_branch
+            if project is Projects.tools:
+                branch = 'master'
+            owner, repo = project.value.split('/')
+            commit = await client.get_commit(owner, repo, branch, timeout=3)
+            latest_sha = commit['sha']
+            is_latest = latest_sha == sha
+            return name, latest_sha, is_latest
+
+        for task in asyncio.as_completed(
+                [_cmp(key[:-7], value) for key, value in js.items()]):
+            name, latest_sha, is_latest = await task
+            if not is_latest:
+                origin_js[f'{name}_commit'] = latest_sha
+            click.echo(f'{name:12}\t{is_latest}\t{latest_sha}')
+
+        if rewrite:
+            with open(filename, 'w') as f:
+                json.dump(origin_js, f, indent=4)
+            click.echo('rewrite succeed!')
+
+
+@cli.command()
+@click.argument('repo', default='tidb')
+@click.argument('sha', default='master')
+@click.option('-v', '--verbose', count=True)
+@coro
+async def artifacts(repo, sha, verbose):
+    """show artifacts of REPO/SHA
+
+    \b
+    Usage examples:
+
+    * tirelease artifacts tidb release-4.0
+    """
+    click.echo(f'{repo}#{sha}', nl=False)
+
+    loop = asyncio.get_event_loop()
+    is_branch = len(sha) != 40
+    async with new_session() as s:
+        if is_branch:
+            click.echo()
+            latest_binary_sha1 = await get_latest_binary_sha1(s, repo, sha)
+            latest_binary_sha1 = latest_binary_sha1.strip()
+            async for commit in list_repo_latest_commits(s, repo, sha, limit=5):
+                sha1, _ = commit['sha'], commit['commit']['message'].split('\n\n')[0]
+                if sha1 == latest_binary_sha1:
+                    sha1_styled = click.style(sha1, fg='green')
+                else:
+                    sha1_styled = sha1
+                click.echo(f'    {sha1_styled}')
+            binary_url = cook_binary_url(repo, latest_binary_sha1)
+            click.echo(f'url: {binary_url}')
+        else:
+            task = loop.create_task(get_repo_commit(s, repo, sha))
+            binary_url = cook_binary_url(repo, sha)
+            resp = await s.head(binary_url)
+            ok = resp.status == 200
+            if ok:
+                status = click.style('ok', fg='green')
+            else:
+                status = click.style('not found', fg='red')
+            click.echo(f' ...{status}')
+
+            msg_title, author_name, date = await task
+            click.echo(f'    {msg_title}')
+            click.echo(f'    {author_name} - {date}')
+            if ok:
+                click.echo(f'{binary_url}')
+            else:
+                sys.exit(1)
+
+
+@cli.command()
+@click.argument('repo')
+@click.argument('sha')
+@click.option('--dry-run/--no-dry-run', is_flag=True, default=True)
+@click.option('-v', '--verbose', count=True)
+@coro
+async def pr2jira(repo, sha, dry_run, verbose):
+    """create issue on Jira for each commit(PR) in REPO/SHA
+
+    \b
+    Usage examples:
+
+    * tirelease pr2jira tidb release-4.0 --no-dry-run
+    """
+    click.echo(f'{repo}#{sha}{" | dry-run" if dry_run else ""}', nl=False)
+
+    async with new_session() as s:
+        click.echo()
+        commits = list_repo_latest_commits(s, repo, sha,
+                                           since="2020-07-17T00:00:00Z")
+        async for commit in commits:
+            commit_sha = commit['sha']
+            message = commit['commit']['message'].split('\n\n')[0]
+            msg, pr_id_str = message.rsplit(' ', 1)
+            p = re.compile(r'\(#(\d+)\)')
+            m = p.match(pr_id_str)
+            if m:
+                pr_id = m.group(1)
+            else:
+                text = click.style(f'commit:{commit_sha} has no corresponding PR',
+                                   fg='red')
+                click.echo(text)
+                sys.exit(1)
+
+            if not is_issue_created(commit_sha):
+                repo_with_ns = cook_repo_with_defaults(repo)
+                summary = msg
+                description = f'https://github.com/{repo_with_ns}/pull/{pr_id}'
+                if not dry_run:
+                    issue = create_jira_issue(summary, description)
+                    issue_key = issue.key
+                    save_created_issue(commit_sha, issue_key)
+                else:
+                    issue_key = 'QADEV-XXX'
+                click.echo(f'sub-task created: {issue_key} {pr_id} {commit_sha}')
+            else:
+                click.echo(f'already created: {commit_sha}')
+
+
+if __name__ == '__main__':
+    cli()
