@@ -4,7 +4,7 @@
 Install requires
 ----------------
 
-pip3 install aiohttp pyyaml requests click
+pip3 install aiohttp pyyaml requests click jira python-jenkins
 
 Usage
 -----
@@ -16,10 +16,13 @@ Check latest commit sha
 """
 
 import asyncio
+import hashlib
 import json
 import re
 import sys
 import os
+from collections import namedtuple
+from datetime import datetime
 from enum import Enum
 from functools import wraps
 
@@ -28,6 +31,7 @@ import click
 import yaml
 
 from jira import JIRA
+from jenkins import Jenkins, JenkinsException
 
 
 class Projects(Enum):
@@ -45,7 +49,68 @@ class Projects(Enum):
     ticdc = 'pingcap/ticdc'
 
 
+class Status(Enum):
+    unknown = 'unknown'
+
+    created = 'created'
+    pending = 'pending'
+    running = 'running'
+
+    # finished
+    succeed = 'succeed'
+    failed = 'failed'
+
+
+class JenkinsId(Enum):
+    idc = 'idc'
+    tidb = 'tidb'
+    qa = 'qa'
+
+
+class Job(Enum):
+    e2e = 'tidb_and_tools_e2e_test'
+    bench_manual = 'bench_manual'
+    bench_tpcc = 'bench_tpcc_master'
+    bench_tpch = 'bench_tpch_master'
+    bench_ycsb = 'bench_ycsb'
+    tiflash_regression = 'tiflash_regression_test_daily'
+
+    build_tidb = 'build-tidb'
+    build_tikv = 'build-tikv'
+    build_pd = 'build-pd'
+
+
+JenkinsJobsMapping = {
+    JenkinsId.tidb: [],
+    JenkinsId.idc: [Job.bench_manual,
+                    Job.bench_tpcc,
+                    Job.bench_tpch,
+                    Job.bench_ycsb,
+                    Job.tiflash_regression,
+                    Job.e2e],
+    JenkinsId.qa: [Job.build_tidb,
+                   Job.build_tikv,
+                   Job.build_pd],
+}
+
+BuildRecord = namedtuple('BuildRecord', ['name', 'digest', 'url', 'status'])
+
+
+TIDB_JENKINS_URI = 'https://internal.pingcap.net/tidb-jenkins'
+TIDB_JENKINS_USERNAME = os.getenv('TIDB_JENKINS_USERNAME')
+TIDB_JENKINS_PASSWORD = os.getenv('TIDB_JENKINS_PASSWORD')
+
+IDC_JENKINS_URI = 'https://internal.pingcap.net/idc-jenkins'
+IDC_JENKINS_USERNAME = os.getenv('IDC_JENKINS_USERNAME')
+IDC_JENKINS_PASSWORD = os.getenv('IDC_JENKINS_PASSWORD')
+
+QA_JENKINS_URI = 'http://172.16.4.61:30001'
+QA_JENKINS_USERNAME = os.getenv('QA_JENKINS_USERNAME')
+QA_JENKINS_PASSWORD = os.getenv('QA_JENKINS_PASSWORD')
+
+
 DBFILE = 'pr2jira.db'
+JENKINS_DBFILE = 'jenkins.db'
 
 JIRA_URI = 'https://internal.pingcap.net/jira'
 JIRA_USERNAME = os.getenv('JIRA_USERNAME')
@@ -111,6 +176,152 @@ class GithubClient:
                 raise GithubException
             return await resp.json()
 
+
+##########################
+# jenkins
+##########################
+
+def create_jenkins_client(jenkins_id):
+    if JenkinsId(jenkins_id) == JenkinsId.tidb:
+        jenkins = Jenkins(TIDB_JENKINS_URI,
+                          username=TIDB_JENKINS_USERNAME,
+                          password=TIDB_JENKINS_PASSWORD)
+    elif JenkinsId(jenkins_id) == JenkinsId.qa:
+        jenkins = Jenkins(QA_JENKINS_URI,
+                          username=QA_JENKINS_USERNAME,
+                          password=QA_JENKINS_PASSWORD)
+    else:
+        jenkins = Jenkins(IDC_JENKINS_URI,
+                          username=IDC_JENKINS_USERNAME,
+                          password=IDC_JENKINS_PASSWORD)
+    return jenkins
+
+
+def get_job_jenkins_id(job):
+    for jenkins_id, jobs in JenkinsJobsMapping.items():
+        if job in jobs:
+            return jenkins_id
+    raise Exception("we don't record which jenkins run this job")
+
+
+def query_record_status(record):
+    job = getattr(Job, record.name)
+    jenkins_id = get_job_jenkins_id(job)
+    client = create_jenkins_client(JenkinsId(jenkins_id))
+    job_id = record.url.split('/')[-1]
+    try:
+        build_info = client.get_build_info(job.value, int(job_id))
+    except JenkinsException:
+        status = Status.pending
+    else:
+        result = build_info['result']
+        if build_info['building']:
+            status = Status.running
+        else:
+            if result == 'SUCCESS':
+                status = Status.succeed
+            elif result in ('FAILURE', 'ABORTED', 'UNSTABLE', 'NOT_BUILT'):
+                status = Status.failed
+            else:
+                # HELP: maybe this will never happen?
+                status = Status.created
+    record = record._replace(status=status)
+    return record
+
+
+def gen_build_url(job, job_id):
+    job = Job(job)
+    jenkins_id = get_job_jenkins_id(job)
+    if jenkins_id == JenkinsId.idc:
+        jenkins_url = IDC_JENKINS_URI
+    elif jenkins_id == JenkinsId.tidb:
+        jenkins_url = TIDB_JENKINS_URI
+    elif jenkins_id == JenkinsId.qa:
+        jenkins_url = QA_JENKINS_URI
+    else:
+        raise Exception('unknown jenkins id')
+
+    return f'{jenkins_url}/job/{job.value}/{job_id}'
+
+
+def save_record(record):
+    name, digest, url, status = record
+    line = f'{name} {digest} {url}'
+    if status is not None:
+        line += f' {status.value}'
+    with open(JENKINS_DBFILE, 'a') as f:
+        f.write(line)
+        f.write('\n')
+    return url
+
+
+def trigger_build(jenkins, job, params):
+    job_name = job.value
+    job_info = jenkins.get_job_info(job_name)
+    job_id = job_info['nextBuildNumber']
+    jenkins.build_job(job_name, params)
+    return job_id
+
+
+def hash_params(params):
+    params_str = json.dumps(params, sort_keys=True)
+    return hashlib.md5(params_str.encode('utf-8')).hexdigest()[:7]
+
+
+def is_build_exists(job, digest):
+    """
+    :return: (flag, records)
+    """
+    flag, records = False, []
+    with open(JENKINS_DBFILE) as f:
+        for line in f:
+            record = line2record(line)
+            if record.name == job.name and record.digest == digest:
+                flag = True
+                records.append(record)
+    return flag, records
+
+
+def line2record(line):
+    parts = line.strip().split(' ')
+    if len(parts) >= 4:
+        name, digest, url, status = parts
+    else:
+        name, digest, url = parts
+        status = Status.unknown
+    return BuildRecord(name, digest, url, Status(status))
+
+
+def record2line(record):
+    name, digest, url, status = record
+    if status is None:
+        return f'{name} {digest} {url}'
+    return f'{name} {digest} {url} {status.value}'
+
+
+def gen_record(job, digest, job_id, status=None):
+    url = gen_build_url(job, job_id)
+    return BuildRecord(job.name, digest, url, status)
+
+
+def build_job(job, params):
+    jenkins_id = get_job_jenkins_id(job)
+    jenkins = create_jenkins_client(jenkins_id)
+    digest = hash_params(params)
+    exists, records = is_build_exists(job, digest)
+    if not exists:
+        job_id = trigger_build(jenkins, job, params)
+        record = gen_record(job, digest, job_id)
+        save_record(record)
+        click.echo(record2line(record))
+    else:
+        click.echo(f'Record already exists:')
+        click.echo(record2line(records[-1]))
+
+
+##############################
+# GitHub
+##############################
 
 async def list_repo_latest_commits(
         s, repo, sha='master', limit=None, since=None, timeout=5):
@@ -185,14 +396,245 @@ def save_created_issue(sha, issue_key):
         f.write(f'{sha} {issue_key}\n')
 
 
-@click.group()
-def cli():
-    pass
+def get_release_metadata(filename):
+    """Parse release metadat from release-json file"""
+
+    with open(filename) as f:
+        js = json.load(f)
+    branch = js.pop('release_branch')
+    js.pop('tidb_old_commits')
+
+    hashes = {}
+    for key, value in js.items():
+        project = getattr(Projects, key[:-7])
+        hash_ = value
+        hashes[project] = hash_
+
+    return {
+        'branch': branch,
+        'hashes': hashes
+    }
 
 
 ##########################
 # sub commands
 ##########################
+
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@coro
+async def e2e(filename):
+    metadata = get_release_metadata(filename)
+    hashes = metadata['hashes']
+    branch = metadata['branch']
+    br = hashes[Projects.br]
+    tiflash = hashes[Projects.tiflash]
+    params = {
+        'TIDB_BRANCH_OR_COMMIT': hashes[Projects.tidb],
+        'TIKV_BRANCH_OR_COMMIT': hashes[Projects.tikv],
+        'PD_BRANCH_OR_COMMIT': hashes[Projects.pd],
+        'BINLOG_BRANCH_OR_COMMIT': hashes[Projects.binlog],
+        'BR_BRANCH_AND_COMMIT': f'{branch}/{br}',
+        'TICDC_BRANCH_OR_COMMIT': hashes[Projects.ticdc],
+        'TOOLS_BRANCH_OR_COMMIT': hashes[Projects.tools],
+        'TIFLASH_BRANCH_AND_COMMIT': f'{branch}/{tiflash}',
+    }
+    job = Job.e2e
+    build_job(job, params)
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@coro
+async def bench_manual(filename):
+    """run bench/sysbench"""
+    metadata = get_release_metadata(filename)
+    hashes = metadata['hashes']
+    params = {
+        'tidb_version': f'hash:{hashes[Projects.tidb]}',
+        'tikv_version': f'hash:{hashes[Projects.tikv]}',
+        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'benchtime': 1200,  # recommended default value
+        'benchcount': 10,   # recommended default value
+        'channel': '#benchbot_test',
+        'ansible_branch': metadata['branch'],
+    }
+    job = Job.bench_manual
+    build_job(job, params)
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@coro
+async def bench_tpcc(filename):
+    """run bench/tpcc"""
+    metadata = get_release_metadata(filename)
+    hashes = metadata['hashes']
+    params = {
+        'branch': metadata['branch'],
+        'channel': '#benchbot_test',
+        'tidb_version': f'hash:{hashes[Projects.tidb]}',
+        'tikv_version': f'hash:{hashes[Projects.tikv]}',
+        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'repeat_time': 5,
+        'instance': 'tpcc',
+    }
+    job = Job.bench_tpcc
+    build_job(job, params)
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@coro
+async def bench_tpch(filename):
+    """run bench/tpch"""
+    metadata = get_release_metadata(filename)
+    hashes = metadata['hashes']
+    params = {
+        'branch': metadata['branch'],
+        'channel': '#benchbot_test',
+        'tidb_version': f'hash:{hashes[Projects.tidb]}',
+        'tikv_version': f'hash:{hashes[Projects.tikv]}',
+        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'instance': 'tpch50',
+    }
+    job = Job.bench_tpch
+    build_job(job, params)
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@coro
+async def bench_ycsb(filename):
+    """run bench/ycsb"""
+    metadata = get_release_metadata(filename)
+    hashes = metadata['hashes']
+    params = {
+        'branch': metadata['branch'],
+        'channel': '#benchbot_test',
+        'tidb_version': f'hash:{hashes[Projects.tidb]}',
+        'tikv_version': f'hash:{hashes[Projects.tikv]}',
+        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'types': 'mysql',
+        'instance': '',
+    }
+    job = Job.bench_ycsb
+    build_job(job, params)
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@coro
+async def tiflash_regression(filename):
+    """run bench/tiflash_regresssion"""
+    metadata = get_release_metadata(filename)
+    hashes = metadata['hashes']
+    branch = metadata['branch']
+    params = {
+        'branch': metadata['branch'],
+        'version': 'latest',
+
+        'tidb_commit_hash': hashes[Projects.tidb],
+        'tikv_commit_hash': hashes[Projects.tikv],
+        'pd_commit_hash': hashes[Projects.pd],
+        'tiflash_commit_hash': hashes[Projects.tiflash],
+
+        'idleMinutes': 180,
+        'desc': f'release {branch} test',
+    }
+    job = Job.tiflash_regression
+    build_job(job, params)
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@coro
+async def build_tidb(filename):
+    """run bench/build_tidb"""
+    metadata = get_release_metadata(filename)
+    branch = metadata['branch']
+    params = {
+        'FORK': 'pingcap',
+        'BRANCH': metadata['branch'],
+        'VERSION': f'{branch}-pre',
+    }
+    job = Job.build_tidb
+    build_job(job, params)
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@coro
+async def build_tikv(filename):
+    """run bench/build_tikv"""
+    metadata = get_release_metadata(filename)
+    branch = metadata['branch']
+    params = {
+        'FORK': 'pingcap',
+        'BRANCH': metadata['branch'],
+        'VERSION': f'{branch}-pre',
+    }
+    job = Job.build_tikv
+    build_job(job, params)
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@coro
+async def build_pd(filename):
+    """run bench/build_pd"""
+    metadata = get_release_metadata(filename)
+    branch = metadata['branch']
+    params = {
+        'FORK': 'pingcap',
+        'BRANCH': metadata['branch'],
+        'VERSION': f'{branch}-pre',
+    }
+    job = Job.build_pd
+    build_job(job, params)
+
+
+@cli.command()
+@coro
+async def check_status():
+    jobs = {}  # {name: (digest, url, status)}
+    with open(JENKINS_DBFILE) as f:
+        for line in f:
+            record = line2record(line)
+            jobs[record.name] = record
+    loop = asyncio.get_event_loop()
+    outputs = []
+    tasks = []
+    origin_records = []
+    for name, record in jobs.items():
+        _, digest, url, status = record
+        if status in (Status.succeed, Status.failed):
+            outputs.append(f'{name:20}\t{status.value:10}\t{url}')
+            continue
+        origin_records.append(record)
+        task = loop.run_in_executor(None, query_record_status, record)
+        tasks.append(task)
+    records = await asyncio.gather(*tasks)
+    for i, record in enumerate(records):
+        if record != origin_records[i]:
+            save_record(record)
+        name, _, url, status = record
+        outputs.append(f'{name:20}\t{status.value:10}\t{url}')
+    for output in outputs:
+        _, status, _ = output.split('\t')
+        status = Status(status.strip())
+        if status == Status.failed:
+            styled_output = click.style(output, fg='red')
+        elif status == Status.succeed:
+            styled_output = click.style(output, fg='green')
+        else:
+            styled_output = output
+        click.echo(styled_output)
 
 
 @cli.command()
@@ -221,19 +663,26 @@ async def check_hash(filename, rewrite):
             commit = await client.get_commit(owner, repo, branch, timeout=3)
             latest_sha = commit['sha']
             is_latest = latest_sha == sha
-            return name, latest_sha, is_latest
+            return name, latest_sha, is_latest, sha
 
         for task in asyncio.as_completed(
                 [_cmp(key[:-7], value) for key, value in js.items()]):
-            name, latest_sha, is_latest = await task
+            name, latest_sha, is_latest, sha = await task
             if not is_latest:
                 origin_js[f'{name}_commit'] = latest_sha
-            click.echo(f'{name:12}\t{is_latest}\t{latest_sha}')
+            green_line = f'{name:12}\t----\t{latest_sha}'
+            line = f'{name:12}\t{is_latest}\t{sha}'
+            if not is_latest:
+                click.echo(click.style(green_line, fg='green'))
+                click.echo(click.style(line, fg='red'))
+            else:
+                click.echo(line)
 
         if rewrite:
             with open(filename, 'w') as f:
                 json.dump(origin_js, f, indent=4)
             click.echo('rewrite succeed!')
+    click.echo('https://github.com/pingcap/tidb-prm/issues/20')
 
 
 @cli.command()
