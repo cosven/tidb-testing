@@ -9,10 +9,16 @@ pip3 install aiohttp pyyaml requests click jira python-jenkins
 Usage
 -----
 
-Check latest commit sha
-
-
-
+1. use GitHub CLI to generate token files, see https://cli.github.com/
+2. setup your environment variables
+  - TIDB_JENKINS_USERNAME
+  - TIDB_JENKINS_PASSWORD
+  - IDC_JENKINS_USERNAME
+  - IDC_JENKINS_PASSWORD
+  - QA_JENKINS_USERNAME
+  - QA_JENKINS_PASSWORD
+  - JIRA_USERNAME
+  - JIRA_PASSWORD
 """
 
 import asyncio
@@ -22,7 +28,6 @@ import re
 import sys
 import os
 from collections import namedtuple
-from datetime import datetime
 from enum import Enum
 from functools import wraps
 
@@ -30,6 +35,7 @@ import aiohttp
 import click
 import yaml
 
+from jinja2 import Template
 from jira import JIRA
 from jenkins import Jenkins, JenkinsException
 
@@ -38,7 +44,7 @@ class Projects(Enum):
     tikv = 'tikv/tikv'
     tidb = 'pingcap/tidb'
     pd = 'pingcap/pd'
-    tiflash = 'pingcap/tiflash'
+    tiflash = 'pingcap/tics'
 
     binlog = 'pingcap/tidb-binlog'
     tools = 'pingcap/tidb-tools'
@@ -73,11 +79,14 @@ class Job(Enum):
     bench_tpcc = 'bench_tpcc_master'
     bench_tpch = 'bench_tpch_master'
     bench_ycsb = 'bench_ycsb'
+
     tiflash_regression = 'tiflash_regression_test_daily'
+    tiflash_test = 'tiflash_schrodinger_test'
 
     build_tidb = 'build-tidb'
     build_tikv = 'build-tikv'
     build_pd = 'build-pd'
+    build_all = 'build-all'
 
 
 JenkinsJobsMapping = {
@@ -87,10 +96,12 @@ JenkinsJobsMapping = {
                     Job.bench_tpch,
                     Job.bench_ycsb,
                     Job.tiflash_regression,
+                    Job.tiflash_test,
                     Job.e2e],
     JenkinsId.qa: [Job.build_tidb,
                    Job.build_tikv,
-                   Job.build_pd],
+                   Job.build_pd,
+                   Job.build_all],
 }
 
 BuildRecord = namedtuple('BuildRecord', ['name', 'digest', 'url', 'status'])
@@ -121,6 +132,50 @@ with open(os.path.expanduser('~/.config/gh/config.yml')) as f:
     GITHUB_TOKEN = data['hosts']['github.com']['oauth_token']
 
 GITHUB_HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"}
+
+##################
+# utils
+##################
+
+BUGFIX_REPORT_TEMPLATE = """
+<html>
+  <head>
+    <style>
+     table {
+       max-width: 600px;
+       border-collapse: collapse;
+     }
+     table, th, td{
+       vertical-align: middle;
+       border: 1px solid black;
+     }
+     th {
+       text-align: center;
+     }
+     td {
+       text-align: left;
+       word-wrap: break-word;
+     }
+    </style>
+  </head>
+  <body>
+    <table style="">
+      <tr>
+        <th>PR</th>
+        <th>Description</th>
+        <th>Result</th>
+      </tr>
+      {% for issue in issues %}
+      <tr>
+        <td><a href="{{ issue['pr_url'] }}">{{ issue['pr_id'] }}</a></td>
+        <td>{{ issue['pr_desc'] }}</td>
+        <td><a href="{{ issue['jira_url'] }}">{{ issue['result'] }}</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </body>
+</html>
+"""
 
 
 class new_session:
@@ -155,6 +210,11 @@ def cook_binary_url(component, sha1):
     tar_name = f'{component}-server'
     return f'http://fileserver.pingcap.net/download/builds/pingcap/'\
         f'{component}/{sha1}/centos7/{tar_name}.tar.gz'
+
+
+##################
+# GitHub
+##################
 
 
 class GithubException(Exception):
@@ -304,12 +364,12 @@ def gen_record(job, digest, job_id, status=None):
     return BuildRecord(job.name, digest, url, status)
 
 
-def build_job(job, params):
+def build_job(job, params, rerun=False):
     jenkins_id = get_job_jenkins_id(job)
     jenkins = create_jenkins_client(jenkins_id)
     digest = hash_params(params)
     exists, records = is_build_exists(job, digest)
-    if not exists:
+    if (not exists) or rerun:
         job_id = trigger_build(jenkins, job, params)
         record = gen_record(job, digest, job_id)
         save_record(record)
@@ -368,6 +428,10 @@ async def get_latest_binary_sha1(
 # jira issues
 #################
 
+def create_jira_client():
+    return JIRA(JIRA_URI, auth=(JIRA_USERNAME, JIRA_PASSWORD))
+
+
 def create_jira_issue(summary, description,
                       parent_task='QADEV-655', project='QADEV'):
     fields = {
@@ -377,7 +441,7 @@ def create_jira_issue(summary, description,
         'issuetype': 'Sub-task',
         'parent': {'key': parent_task}
     }
-    jira = JIRA(JIRA_URI, auth=(JIRA_USERNAME, JIRA_PASSWORD))
+    jira = create_jira_client()
     return jira.create_issue(fields=fields)
 
 
@@ -416,6 +480,113 @@ def get_release_metadata(filename):
     }
 
 
+########################
+# bench
+########################
+
+def run_ycsb_bench(metadata, rerun):
+    hashes = metadata['hashes']
+    params = {
+        'branch': 'master',  # non-related with branch
+        'channel': '#benchbot_test',
+        'tidb_version': f'hash:{hashes[Projects.tidb]}',
+        'tikv_version': f'hash:{hashes[Projects.tikv]}',
+        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'types': 'mysql',
+        'instance': '',
+    }
+    job = Job.bench_ycsb
+    build_job(job, params, rerun=rerun)
+
+
+def run_tpcc_bench(metadata, rerun):
+    hashes = metadata['hashes']
+    params = {
+        'branch': metadata['branch'],
+        'channel': '#benchbot_test',
+        'tidb_version': f'hash:{hashes[Projects.tidb]}',
+        'tikv_version': f'hash:{hashes[Projects.tikv]}',
+        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'repeat_time': 5,
+        'instance': 'tpcc',
+    }
+    job = Job.bench_tpcc
+    build_job(job, params, rerun=rerun)
+
+
+def run_tpch_bench(metadata, rerun):
+    hashes = metadata['hashes']
+    params = {
+        'branch': metadata['branch'],
+        'channel': '#benchbot_test',
+        'tidb_version': f'hash:{hashes[Projects.tidb]}',
+        'tikv_version': f'hash:{hashes[Projects.tikv]}',
+        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'instance': 'tpch50',
+    }
+    job = Job.bench_tpch
+    build_job(job, params, rerun=rerun)
+
+
+def run_sysbench_bench(metadata, rerun):
+    hashes = metadata['hashes']
+    params = {
+        'tidb_version': f'hash:{hashes[Projects.tidb]}',
+        'tikv_version': f'hash:{hashes[Projects.tikv]}',
+        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'benchtime': 1200,  # recommended default value
+        'benchcount': 10,   # recommended default value
+        'channel': '#benchbot_test',
+        'ansible_branch': metadata['branch'],
+    }
+    job = Job.bench_manual
+    build_job(job, params, rerun=rerun)
+
+
+def run_tiflash_case(metadata, case, run_time=720, rerun=False):
+    """
+    :param run_time: 720=0.5day
+    """
+    branch = metadata['branch']
+    hashes = metadata['hashes']
+
+    parts = case.split('-')
+    testcase = parts[0]
+    if len(parts) > 1:
+        options = parts[1]
+        for char in options:
+            if char == '0':
+                testcase += ' false'
+            elif char == '1':
+                testcase += ' true'
+    params = {
+        'branch': branch,
+        'version': 'latest',
+        'testcase': f'schrodinger/{testcase}',
+        'maxRunTime': run_time,
+        'tidb_commit_hash': hashes[Projects.tidb],
+        'tikv_commit_hash': hashes[Projects.tikv],
+        'pd_commit_hash': hashes[Projects.pd],
+        'tiflash_commit_hash': hashes[Projects.tiflash],
+        # 'notify': True,
+        'idleMinutes': 5,
+        'desc': f'triggered by QA for release({branch}) test',
+    }
+    job = Job.tiflash_test
+    build_job(job, params, rerun=rerun)
+
+
+def build_x(metadata, job, tag=None):
+    branch = metadata['branch']
+    params = {
+        'FORK': 'pingcap',
+        'BRANCH': branch,
+    }
+    if tag is not None:
+        params['VERSION'] = tag
+    build_job(job, params)
+
+
 ##########################
 # sub commands
 ##########################
@@ -450,81 +621,32 @@ async def e2e(filename):
 
 @cli.command()
 @click.argument('filename', type=click.Path(exists=True))
+@click.option('-w', '--workload',
+              type=click.Choice(['tpcc', 'tpch', 'ycsb', 'sysbench']))
+@click.option('-a', '--all-workloads',
+              is_flag=True, default=False)
+@click.option('--rerun', is_flag=True, default=False)
 @coro
-async def bench_manual(filename):
-    """run bench/sysbench"""
+async def bench(filename, workload, all_workloads, rerun):
+    """run bench WORKLOAD"""
     metadata = get_release_metadata(filename)
-    hashes = metadata['hashes']
-    params = {
-        'tidb_version': f'hash:{hashes[Projects.tidb]}',
-        'tikv_version': f'hash:{hashes[Projects.tikv]}',
-        'pd_version': f'hash:{hashes[Projects.pd]}',
-        'benchtime': 1200,  # recommended default value
-        'benchcount': 10,   # recommended default value
-        'channel': '#benchbot_test',
-        'ansible_branch': metadata['branch'],
+    mapping = {
+        'tpcc': run_tpcc_bench,
+        'tpch': run_tpch_bench,
+        'ycsb': run_ycsb_bench,
+        'sysbench': run_sysbench_bench,
     }
-    job = Job.bench_manual
-    build_job(job, params)
 
-
-@cli.command()
-@click.argument('filename', type=click.Path(exists=True))
-@coro
-async def bench_tpcc(filename):
-    """run bench/tpcc"""
-    metadata = get_release_metadata(filename)
-    hashes = metadata['hashes']
-    params = {
-        'branch': metadata['branch'],
-        'channel': '#benchbot_test',
-        'tidb_version': f'hash:{hashes[Projects.tidb]}',
-        'tikv_version': f'hash:{hashes[Projects.tikv]}',
-        'pd_version': f'hash:{hashes[Projects.pd]}',
-        'repeat_time': 5,
-        'instance': 'tpcc',
-    }
-    job = Job.bench_tpcc
-    build_job(job, params)
-
-
-@cli.command()
-@click.argument('filename', type=click.Path(exists=True))
-@coro
-async def bench_tpch(filename):
-    """run bench/tpch"""
-    metadata = get_release_metadata(filename)
-    hashes = metadata['hashes']
-    params = {
-        'branch': metadata['branch'],
-        'channel': '#benchbot_test',
-        'tidb_version': f'hash:{hashes[Projects.tidb]}',
-        'tikv_version': f'hash:{hashes[Projects.tikv]}',
-        'pd_version': f'hash:{hashes[Projects.pd]}',
-        'instance': 'tpch50',
-    }
-    job = Job.bench_tpch
-    build_job(job, params)
-
-
-@cli.command()
-@click.argument('filename', type=click.Path(exists=True))
-@coro
-async def bench_ycsb(filename):
-    """run bench/ycsb"""
-    metadata = get_release_metadata(filename)
-    hashes = metadata['hashes']
-    params = {
-        'branch': metadata['branch'],
-        'channel': '#benchbot_test',
-        'tidb_version': f'hash:{hashes[Projects.tidb]}',
-        'tikv_version': f'hash:{hashes[Projects.tikv]}',
-        'pd_version': f'hash:{hashes[Projects.pd]}',
-        'types': 'mysql',
-        'instance': '',
-    }
-    job = Job.bench_ycsb
-    build_job(job, params)
+    if all_workloads:
+        for workload, func in mapping.items():
+            func(metadata, rerun)
+    else:
+        if workload:
+            runner = mapping[workload]
+            runner(metadata, rerun)
+        else:
+            click.echo(click.style('Specify one workload!', fg='red'))
+            sys.exit(1)
 
 
 @cli.command()
@@ -551,51 +673,74 @@ async def tiflash_regression(filename):
     build_job(job, params)
 
 
-@cli.command()
-@click.argument('filename', type=click.Path(exists=True))
-@coro
-async def build_tidb(filename):
-    """run bench/build_tidb"""
-    metadata = get_release_metadata(filename)
-    branch = metadata['branch']
-    params = {
-        'FORK': 'pingcap',
-        'BRANCH': metadata['branch'],
-        'VERSION': f'{branch}-pre',
-    }
-    job = Job.build_tidb
-    build_job(job, params)
+TIFLASH_CASES = [
+    'bank',
+    'bank2',
+    'crud',
+    'ledger',
+    'sqllogic',
+    'ddl',
+    # region merge
+    'bank-1',
+    'bank2-1',
+    'crud-1',
+    'ledger-1',
+    # optimistic
+    'bank-0000',
+    'bank2-0000',
+    'crud-0000',
+    'ledger-0000',
+    # follower read
+    'bank-00011'
+]
 
 
 @cli.command()
 @click.argument('filename', type=click.Path(exists=True))
+@click.option('--case', type=click.Choice(TIFLASH_CASES))
+@click.option('--all-cases', is_flag=True, default=False)
+@click.option('--rerun', is_flag=True, default=False)
 @coro
-async def build_tikv(filename):
-    """run bench/build_tikv"""
+async def tiflash_test(filename, case, all_cases, rerun):
+    """run bench/tiflash_test"""
     metadata = get_release_metadata(filename)
-    branch = metadata['branch']
-    params = {
-        'FORK': 'pingcap',
-        'BRANCH': metadata['branch'],
-        'VERSION': f'{branch}-pre',
-    }
-    job = Job.build_tikv
-    build_job(job, params)
+    if all_cases:
+        for case in TIFLASH_CASES:
+            run_tiflash_case(metadata, case, rerun=rerun)
+    else:
+        if case:
+            run_tiflash_case(metadata, case, rerun=rerun)
+        else:
+            click.echo(click.style('Specify one case!', fg='red'))
 
 
 @cli.command()
 @click.argument('filename', type=click.Path(exists=True))
+@click.option('--tag')
+@click.option('--component', type=click.Choice(['tidb', 'pd', 'tikv']))
 @coro
-async def build_pd(filename):
-    """run bench/build_pd"""
+async def build(filename, tag, component):
+    """build XXX (maybe you should use build_all)"""
     metadata = get_release_metadata(filename)
-    branch = metadata['branch']
+    job_name = f'build_{component}'
+    job = getattr(Job, job_name)
+    build_x(metadata, job, tag)
+
+
+@cli.command()
+@click.argument('filename', type=click.Path(exists=True))
+@click.argument('tag')
+@coro
+async def build_all(filename, tag):
+    """run qa/build_all"""
+    metadata = get_release_metadata(filename)
     params = {
         'FORK': 'pingcap',
         'BRANCH': metadata['branch'],
-        'VERSION': f'{branch}-pre',
+        'VERSION': tag,
+        'TIUP_MIRRORS': 'http://172.16.4.61:31989',
     }
-    job = Job.build_pd
+    job = Job.build_all
     build_job(job, params)
 
 
@@ -737,6 +882,43 @@ async def artifacts(repo, sha, verbose):
 
 
 @cli.command()
+@click.argument('issue')
+@coro
+async def report_bugfix(issue):
+    query = f'parent={issue}'
+    jira = create_jira_client()
+    max_total = 200
+    issues = jira.search_issues(query, maxResults=max_total)
+    if len(issues) >= max_total:
+        raise Exception('too many issues!')
+
+    cancelled = 0
+    done_issues = []
+    for issue in issues:
+        status = issue.fields.status.name.lower()
+        if status != 'done':
+            cancelled += 1
+            continue
+        pr_url = issue.fields.description
+        pr_url = pr_url.split('\n')[0]
+        pr_id = pr_url.split('/')[-1]
+        assert pr_url.startswith('https')
+        assert pr_id.isdigit()
+        done_issues.append({'pr_url': pr_url,
+                            'pr_id': pr_id,
+                            'pr_desc': issue.fields.summary,
+                            'jira_url': issue.permalink(),
+                            'result': 'passed'})
+    tpl = Template(BUGFIX_REPORT_TEMPLATE)
+    text = tpl.render(issues=done_issues)
+    filename = 'bugfix_report.html'
+    with open(filename, 'w') as f:
+        f.write(text)
+    click.echo(f'Total: {len(done_issues)}, cancelled: {cancelled}')
+    click.echo('Generated: ' + click.style(filename, fg='green'))
+
+
+@cli.command()
 @click.argument('repo')
 @click.argument('sha')
 @click.option('--dry-run/--no-dry-run', is_flag=True, default=True)
@@ -755,7 +937,7 @@ async def pr2jira(repo, sha, dry_run, verbose):
     async with new_session() as s:
         click.echo()
         commits = list_repo_latest_commits(s, repo, sha,
-                                           since="2020-07-17T00:00:00Z")
+                                           since="2020-07-18T00:00:00Z")
         async for commit in commits:
             commit_sha = commit['sha']
             message = commit['commit']['message'].split('\n\n')[0]
