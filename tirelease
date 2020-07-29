@@ -19,6 +19,8 @@ Usage
   - QA_JENKINS_PASSWORD
   - JIRA_USERNAME
   - JIRA_PASSWORD
+  - GITHUB_TOKEN
+3. run `./tirelease --help` to see more details
 """
 
 import asyncio
@@ -40,7 +42,7 @@ from jira import JIRA
 from jenkins import Jenkins, JenkinsException
 
 
-class Projects(Enum):
+class Project(Enum):
     tikv = 'tikv/tikv'
     tidb = 'pingcap/tidb'
     pd = 'pingcap/pd'
@@ -56,6 +58,7 @@ class Projects(Enum):
 
 
 class Status(Enum):
+    """Jenkins build status"""
     unknown = 'unknown'
 
     created = 'created'
@@ -104,6 +107,7 @@ JenkinsJobsMapping = {
                    Job.build_all],
 }
 
+#: Jenkins build record
 BuildRecord = namedtuple('BuildRecord', ['name', 'digest', 'url', 'status'])
 
 
@@ -127,9 +131,16 @@ JIRA_URI = 'https://internal.pingcap.net/jira'
 JIRA_USERNAME = os.getenv('JIRA_USERNAME')
 JIRA_PASSWORD = os.getenv('JIRA_PASSWORD')
 
-with open(os.path.expanduser('~/.config/gh/config.yml')) as f:
-    data = yaml.safe_load(f)
-    GITHUB_TOKEN = data['hosts']['github.com']['oauth_token']
+GITHUB_TOKEN_FILEPATH = os.path.expanduser('~/.config/gh/config.yml')
+
+if os.path.exists(GITHUB_TOKEN_FILEPATH):
+    with open(GITHUB_TOKEN_FILEPATH) as f:
+        data = yaml.safe_load(f)
+        GITHUB_TOKEN = data['hosts']['github.com']['oauth_token']
+else:
+    GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
+    if GITHUB_TOKEN is None:
+        raise Exception('please set GITHUB_TOKEN environment variable')
 
 GITHUB_HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"}
 
@@ -137,6 +148,7 @@ GITHUB_HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"}
 # utils
 ##################
 
+#: bugfix report template with jinja2 syntax
 BUGFIX_REPORT_TEMPLATE = """
 <html>
   <head>
@@ -179,6 +191,7 @@ BUGFIX_REPORT_TEMPLATE = """
 
 
 class new_session:
+    """create a aiohttp client session context manager"""
     def __init__(self):
         self._s = aiohttp.ClientSession(headers=GITHUB_HEADERS)
 
@@ -190,6 +203,7 @@ class new_session:
 
 
 def coro(f):
+    """decorator for click commands"""
     @wraps(f)
     def wrapper(*args, **kwargs):
         loop = asyncio.get_event_loop()
@@ -198,6 +212,7 @@ def coro(f):
 
 
 def cook_repo_with_defaults(repo):
+    """Deprecated, please use Project"""
     if '/' not in repo:
         owner = 'pingcap'
         if repo == 'tikv':
@@ -265,6 +280,10 @@ def get_job_jenkins_id(job):
 
 
 def query_record_status(record):
+    """query build status by record
+
+    :type record: BuildRecord
+    """
     job = getattr(Job, record.name)
     jenkins_id = get_job_jenkins_id(job)
     client = create_jenkins_client(JenkinsId(jenkins_id))
@@ -290,6 +309,11 @@ def query_record_status(record):
 
 
 def gen_build_url(job, job_id):
+    """generate build url
+
+    :type job: Job
+    :param job_id: jenkins build id
+    """
     job = Job(job)
     jenkins_id = get_job_jenkins_id(job)
     if jenkins_id == JenkinsId.idc:
@@ -305,6 +329,9 @@ def gen_build_url(job, job_id):
 
 
 def save_record(record):
+    """
+    save record in DBFILE
+    """
     name, digest, url, status = record
     line = f'{name} {digest} {url}'
     if status is not None:
@@ -470,7 +497,7 @@ def get_release_metadata(filename):
 
     hashes = {}
     for key, value in js.items():
-        project = getattr(Projects, key[:-7])
+        project = getattr(Project, key[:-7])
         hash_ = value
         hashes[project] = hash_
 
@@ -489,9 +516,9 @@ def run_ycsb_bench(metadata, rerun):
     params = {
         'branch': 'master',  # non-related with branch
         'channel': '#benchbot_test',
-        'tidb_version': f'hash:{hashes[Projects.tidb]}',
-        'tikv_version': f'hash:{hashes[Projects.tikv]}',
-        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'tidb_version': f'hash:{hashes[Project.tidb]}',
+        'tikv_version': f'hash:{hashes[Project.tikv]}',
+        'pd_version': f'hash:{hashes[Project.pd]}',
         'types': 'mysql',
         'instance': '',
     }
@@ -504,9 +531,9 @@ def run_tpcc_bench(metadata, rerun):
     params = {
         'branch': metadata['branch'],
         'channel': '#benchbot_test',
-        'tidb_version': f'hash:{hashes[Projects.tidb]}',
-        'tikv_version': f'hash:{hashes[Projects.tikv]}',
-        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'tidb_version': f'hash:{hashes[Project.tidb]}',
+        'tikv_version': f'hash:{hashes[Project.tikv]}',
+        'pd_version': f'hash:{hashes[Project.pd]}',
         'repeat_time': 5,
         'instance': 'tpcc',
     }
@@ -519,9 +546,9 @@ def run_tpch_bench(metadata, rerun):
     params = {
         'branch': metadata['branch'],
         'channel': '#benchbot_test',
-        'tidb_version': f'hash:{hashes[Projects.tidb]}',
-        'tikv_version': f'hash:{hashes[Projects.tikv]}',
-        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'tidb_version': f'hash:{hashes[Project.tidb]}',
+        'tikv_version': f'hash:{hashes[Project.tikv]}',
+        'pd_version': f'hash:{hashes[Project.pd]}',
         'instance': 'tpch50',
     }
     job = Job.bench_tpch
@@ -531,9 +558,9 @@ def run_tpch_bench(metadata, rerun):
 def run_sysbench_bench(metadata, rerun):
     hashes = metadata['hashes']
     params = {
-        'tidb_version': f'hash:{hashes[Projects.tidb]}',
-        'tikv_version': f'hash:{hashes[Projects.tikv]}',
-        'pd_version': f'hash:{hashes[Projects.pd]}',
+        'tidb_version': f'hash:{hashes[Project.tidb]}',
+        'tikv_version': f'hash:{hashes[Project.tikv]}',
+        'pd_version': f'hash:{hashes[Project.pd]}',
         'benchtime': 1200,  # recommended default value
         'benchcount': 10,   # recommended default value
         'channel': '#benchbot_test',
@@ -564,10 +591,10 @@ def run_tiflash_case(metadata, case, run_time=720, rerun=False):
         'version': 'latest',
         'testcase': f'schrodinger/{testcase}',
         'maxRunTime': run_time,
-        'tidb_commit_hash': hashes[Projects.tidb],
-        'tikv_commit_hash': hashes[Projects.tikv],
-        'pd_commit_hash': hashes[Projects.pd],
-        'tiflash_commit_hash': hashes[Projects.tiflash],
+        'tidb_commit_hash': hashes[Project.tidb],
+        'tikv_commit_hash': hashes[Project.tikv],
+        'pd_commit_hash': hashes[Project.pd],
+        'tiflash_commit_hash': hashes[Project.tiflash],
         # 'notify': True,
         'idleMinutes': 5,
         'desc': f'triggered by QA for release({branch}) test',
@@ -577,6 +604,7 @@ def run_tiflash_case(metadata, case, run_time=720, rerun=False):
 
 
 def build_x(metadata, job, tag=None):
+    """build one component(tidb/tikv/pd/...)"""
     branch = metadata['branch']
     params = {
         'FORK': 'pingcap',
@@ -600,19 +628,20 @@ def cli():
 @click.argument('filename', type=click.Path(exists=True))
 @coro
 async def e2e(filename):
+    """run e2e jenkins job"""
     metadata = get_release_metadata(filename)
     hashes = metadata['hashes']
     branch = metadata['branch']
-    br = hashes[Projects.br]
-    tiflash = hashes[Projects.tiflash]
+    br = hashes[Project.br]
+    tiflash = hashes[Project.tiflash]
     params = {
-        'TIDB_BRANCH_OR_COMMIT': hashes[Projects.tidb],
-        'TIKV_BRANCH_OR_COMMIT': hashes[Projects.tikv],
-        'PD_BRANCH_OR_COMMIT': hashes[Projects.pd],
-        'BINLOG_BRANCH_OR_COMMIT': hashes[Projects.binlog],
+        'TIDB_BRANCH_OR_COMMIT': hashes[Project.tidb],
+        'TIKV_BRANCH_OR_COMMIT': hashes[Project.tikv],
+        'PD_BRANCH_OR_COMMIT': hashes[Project.pd],
+        'BINLOG_BRANCH_OR_COMMIT': hashes[Project.binlog],
         'BR_BRANCH_AND_COMMIT': f'{branch}/{br}',
-        'TICDC_BRANCH_OR_COMMIT': hashes[Projects.ticdc],
-        'TOOLS_BRANCH_OR_COMMIT': hashes[Projects.tools],
+        'TICDC_BRANCH_OR_COMMIT': hashes[Project.ticdc],
+        'TOOLS_BRANCH_OR_COMMIT': hashes[Project.tools],
         'TIFLASH_BRANCH_AND_COMMIT': f'{branch}/{tiflash}',
     }
     job = Job.e2e
@@ -661,10 +690,10 @@ async def tiflash_regression(filename):
         'branch': metadata['branch'],
         'version': 'latest',
 
-        'tidb_commit_hash': hashes[Projects.tidb],
-        'tikv_commit_hash': hashes[Projects.tikv],
-        'pd_commit_hash': hashes[Projects.pd],
-        'tiflash_commit_hash': hashes[Projects.tiflash],
+        'tidb_commit_hash': hashes[Project.tidb],
+        'tikv_commit_hash': hashes[Project.tikv],
+        'pd_commit_hash': hashes[Project.pd],
+        'tiflash_commit_hash': hashes[Project.tiflash],
 
         'idleMinutes': 180,
         'desc': f'release {branch} test',
@@ -748,6 +777,7 @@ async def build_all(filename, tag):
 @coro
 async def check_status():
     jobs = {}  # {name: (digest, url, status)}
+    # find the latest build for each job
     with open(JENKINS_DBFILE) as f:
         for line in f:
             record = line2record(line)
@@ -756,6 +786,8 @@ async def check_status():
     outputs = []
     tasks = []
     origin_records = []
+
+    # filter out builds which are finished
     for name, record in jobs.items():
         _, digest, url, status = record
         if status in (Status.succeed, Status.failed):
@@ -764,12 +796,16 @@ async def check_status():
         origin_records.append(record)
         task = loop.run_in_executor(None, query_record_status, record)
         tasks.append(task)
+
+    # query builds status and generate outputs
     records = await asyncio.gather(*tasks)
     for i, record in enumerate(records):
         if record != origin_records[i]:
             save_record(record)
         name, _, url, status = record
         outputs.append(f'{name:20}\t{status.value:10}\t{url}')
+
+    # colorize outputs
     for output in outputs:
         _, status, _ = output.split('\t')
         status = Status(status.strip())
@@ -799,10 +835,10 @@ async def check_hash(filename, rewrite):
         client = GithubClient(s)
 
         async def _cmp(name, sha):
-            project = getattr(Projects, name)
+            project = getattr(Project, name)
             branch = release_branch
             # tools use master as it's release_branch
-            if project is Projects.tools:
+            if project is Project.tools:
                 branch = 'master'
             owner, repo = project.value.split('/')
             commit = await client.get_commit(owner, repo, branch, timeout=3)
@@ -892,6 +928,7 @@ async def report_bugfix(issue):
     if len(issues) >= max_total:
         raise Exception('too many issues!')
 
+    # collect all valid issues
     cancelled = 0
     done_issues = []
     for issue in issues:
@@ -909,6 +946,8 @@ async def report_bugfix(issue):
                             'pr_desc': issue.fields.summary,
                             'jira_url': issue.permalink(),
                             'result': 'passed'})
+
+    # render template and generate html file
     tpl = Template(BUGFIX_REPORT_TEMPLATE)
     text = tpl.render(issues=done_issues)
     filename = 'bugfix_report.html'
