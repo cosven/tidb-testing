@@ -460,7 +460,7 @@ def create_jira_client():
 
 
 def create_jira_issue(summary, description,
-                      parent_task='QADEV-655', project='QADEV'):
+                      parent_task, project='QADEV'):
     fields = {
         'project': {'key': project},
         'summary': summary,
@@ -961,17 +961,20 @@ async def report_bugfix(issue):
 @click.argument('repo')
 @click.argument('sha')
 @click.argument('since')
-@click.option('--dry-run/--no-dry-run', is_flag=True, default=True)
+@click.option('--parent-task')
 @click.option('-v', '--verbose', count=True)
 @coro
-async def pr2jira(repo, sha, since, dry_run, verbose):
-    """create issue on Jira for each commit(PR) in REPO/SHA
+async def pr2jira(repo, sha, since, parent_task, verbose):
+    """create issue on Jira for each commit before SINCE in REPO/SHA
 
     \b
     Usage examples:
 
-    * tirelease pr2jira tidb release-4.0 --no-dry-run
+    \b
+    * tirelease pr2jira tidb release-4.0 v4.0.3
+    * tirelease pr2jira tidb release-4.0 v4.0.4 --parent_task QADEV-655
     """
+    dry_run = not parent_task  # if parent task is empty, dry run
     click.echo(f'{repo}#{sha}{" | dry-run" if dry_run else ""}', nl=False)
 
     async with new_session() as s:
@@ -999,7 +1002,9 @@ async def pr2jira(repo, sha, since, dry_run, verbose):
                 summary = msg
                 description = f'https://github.com/{repo_with_ns}/pull/{pr_id}'
                 if not dry_run:
-                    issue = create_jira_issue(summary, description)
+                    issue = create_jira_issue(summary,
+                                              description,
+                                              parent_task=parent_task)
                     issue_key = issue.key
                     save_created_issue(commit_sha, issue_key)
                 else:
