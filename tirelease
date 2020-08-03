@@ -960,10 +960,11 @@ async def report_bugfix(issue):
 @cli.command()
 @click.argument('repo')
 @click.argument('sha')
+@click.argument('since')
 @click.option('--dry-run/--no-dry-run', is_flag=True, default=True)
 @click.option('-v', '--verbose', count=True)
 @coro
-async def pr2jira(repo, sha, dry_run, verbose):
+async def pr2jira(repo, sha, since, dry_run, verbose):
     """create issue on Jira for each commit(PR) in REPO/SHA
 
     \b
@@ -975,8 +976,10 @@ async def pr2jira(repo, sha, dry_run, verbose):
 
     async with new_session() as s:
         click.echo()
+        _, _, date = await get_repo_commit(s, repo, since)
+
         commits = list_repo_latest_commits(s, repo, sha,
-                                           since="2020-07-18T00:00:00Z")
+                                           since=date)
         async for commit in commits:
             commit_sha = commit['sha']
             message = commit['commit']['message'].split('\n\n')[0]
