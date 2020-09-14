@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+
+"""
+Install
+-------
+
+pip3 install aiohttp pyyaml requests click
+"""
+
+import asyncio
+import sys
+import os
+from functools import wraps
+
+import aiohttp
+import click
+import requests
+import yaml
+
+
+with open(os.path.expanduser('~/.config/gh/config.yml')) as f:
+    data = yaml.safe_load(f)
+    token = data['hosts']['github.com']['oauth_token']
+
+
+headers={"Authorization": f"token {token}"}
+
+
+class new_session:
+    def __init__(self):
+        self._s = aiohttp.ClientSession(headers=headers)
+
+    async def __aenter__(self):
+        return self._s
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self._s.close()
+
+
+def coro(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(f(*args, **kwargs))
+    return wrapper
+
+
+def cook_repo_with_defaults(repo):
+    if '/' not in repo:
+        owner = 'pingcap'
+        if repo == 'tikv':
+            owner = 'tikv'
+        return f'{owner}/{repo}'
+    return repo
+
+
+def cook_binary_url(component, sha1):
+    tar_name = f'{component}-server'
+    return f'http://fileserver.pingcap.net/download/builds/pingcap/'\
+        f'{component}/{sha1}/centos7/{tar_name}.tar.gz'
+
+
+async def list_repo_latest_commits(
+        s, repo, sha='master', limit=None, since=None, timeout=5):
+    """
+    yield (sha, msg_title)
+    """
+    repo = cook_repo_with_defaults(repo)
+    params = {'sha': sha}
+    if since is not None:
+        params['since'] = since
+    url = f'https://api.github.com/repos/{repo}/commits'
+    async with s.get(url, timeout=timeout, params=params) as resp:
+        commits = await resp.json()
+        if limit is not None:
+            commits = commits[:limit]
+        for commit in commits:
+            yield commit
+
+
+async def get_repo_commit(s, repo, sha1, timeout=2):
+    """
+    return (msg_title, author_name, date)
+    """
+    repo = cook_repo_with_defaults(repo)
+    url = f'https://api.github.com/repos/{repo}/commits/{sha1}'
+    async with s.get(url, timeout=timeout) as resp:
+        commit = await resp.json()
+        commit = commit['commit']
+        author = commit['author']
+        author_name = author['name']
+        date = author['date']
+        msg_title = commit['message'].split('\n\n')[0]
+        return (msg_title, author_name, date)
+
+
+async def get_latest_binary_sha1(s,
+        repo, branch='master', timeout=2):
+    url = f'http://fileserver.pingcap.net/download/refs/pingcap/{repo}/{branch}/sha1'
+    async with s.get(url) as resp:
+        return await resp.text()
+
+
+@click.command()
+@click.argument('repo', default='tidb')
+@click.argument('sha', default='master')
+@click.option('-v', '--verbose', count=True)
+@coro
+async def cli(repo, sha, verbose):
+    """show artifacts of REPO/SHA
+    \b
+    Usage examples:
+    * tirelease artifacts tidb release-4.0
+    """
+    click.echo(f'{repo}#{sha}', nl=False)
+
+    loop = asyncio.get_event_loop()
+    is_branch = len(sha) != 40
+    async with new_session() as s:
+        if is_branch:
+            click.echo()
+            latest_binary_sha1 = await get_latest_binary_sha1(s, repo, sha)
+            latest_binary_sha1 = latest_binary_sha1.strip()
+            async for commit in list_repo_latest_commits(s, repo, sha, limit=5):
+                sha1, _ = commit['sha'], commit['commit']['message'].split('\n\n')[0]
+                if sha1 == latest_binary_sha1:
+                    sha1_styled = click.style(sha1, fg='green')
+                else:
+                    sha1_styled = sha1
+                click.echo(f'    {sha1_styled}')
+            binary_url = cook_binary_url(repo, latest_binary_sha1)
+            click.echo(f'url: {binary_url}')
+        else:
+            task = loop.create_task(get_repo_commit(s, repo, sha))
+            binary_url = cook_binary_url(repo, sha)
+            resp = await s.head(binary_url)
+            ok = resp.status == 200
+            if ok:
+                status = click.style('ok', fg='green')
+            else:
+                status = click.style('not found', fg='red')
+            click.echo(f' ...{status}')
+
+            msg_title, author_name, date = await task
+            click.echo(f'    {msg_title}')
+            click.echo(f'    {author_name} - {date}')
+            if ok:
+                click.echo(f'{binary_url}')
+            else:
+                sys.exit(1)
+
+
+if __name__ == '__main__':
+    cli()
