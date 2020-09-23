@@ -1,0 +1,8 @@
+FROM pingcap/alpine-glibc
+
+COPY tikv-server /tikv-server
+COPY tikv-ctl /tikv-ctl
+
+EXPOSE 20160 20180
+
+ENTRYPOINT ["/tikv-server"]
