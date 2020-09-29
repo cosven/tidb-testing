@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+
+"""
+pip install tabulate
+"""
+
+import asyncio
+from functools import wraps
+
+import click
+import aiohttp
+from tabulate import tabulate
+
+
+#############################
+# global variables
+#############################
+http = None  # global aiohttp session
+
+
+#############################
+# utils
+#############################
+
+def coro(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        async def main():
+            global http
+            http = aiohttp.ClientSession()
+            try:
+                await f(*args, **kwargs)
+            finally:
+                await http.close()
+        return loop.run_until_complete(main())
+    return wrapper
+
+
+class new_http_session:
+    def __init__(self, *args, **kwargs):
+        self._s = aiohttp.ClientSession(*args, **kwargs)
+
+    async def __aenter__(self):
+        return self._s
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self._s.close()
+
+
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+@click.argument('pd', default='http://127.0.0.1:2379')
+@coro
+async def list_tikvs(pd):
+    """list tikvs status"""
+    headers = [
+        'id',
+        'addr',
+        'state',
+        'uptime',
+        'region_size'
+    ]
+    rows = []
+    pd_api = f'{pd}/pd/api/v1'
+    async with http.get(f'{pd_api}/stores') as resp:
+        js = await resp.json()
+        stores = js['stores']
+        for store in stores:
+            store_meta = store['store']
+            store_status = store['status']
+            rows.append((
+                store_meta['id'],
+                store_meta['address'],
+                store_meta['state_name'],
+                store_status['uptime'],
+                store_status['region_size'],
+            ))
+
+    click.echo(tabulate(rows, headers))
+
+
+if __name__ == '__main__':
+    cli()

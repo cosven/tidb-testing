@@ -1,0 +1,31 @@
+#!/bin/bash
+
+[[ -z $1 ]] && echo "Usage: $0 <case>" && exit 1
+gh --version >/dev/null 2>&1 || (echo "please install github-cli" && exit 1)
+
+case=$1
+
+# if grep failed, just exit
+git grep -n $case || (echo "case not found" && exit 1)
+
+info=`git grep -n $case | head -1 | cut -d':' -f 1,2`
+filename=`echo $info | cut -d':' -f 1`
+lineno=`echo $info | cut -d':' -f 2`
+
+# show blame info
+git blame -L $lineno,+1 -- $filename
+
+commit=`git blame -L $lineno,+1 -- $filename | cut -d' ' -f 1`
+
+# show tags which contains this commit
+git tag --contains $commit
+
+# show commit message
+git log --format=%B -n 1 $commit | head -n 1
+
+title=`git log --format=%B -n 1 $commit | head -n 1`
+
+pr=`echo $title | sed "s/.*(#\([0-9]*\))/\1/"`
+echo "gh pr view $pr"
+
+gh pr view $pr | grep "url:"
