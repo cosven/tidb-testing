@@ -97,6 +97,14 @@ class PdClient:
         js = resp.json()
         return js['stores']
 
+    def apply_placement_rule(self, js):
+        log.msg(f'apply placement rule', rule=js)
+        resp = requests.post(f'{self._pd_api}/config/rule', json=js)
+        if resp.status_code == 200:
+            return True
+        log.debug(f'failed: {resp.text}')
+        return False
+
 
 PlaygroundInstance = namedtuple('PlaygroundInstance', ['pid', 'role', 'uptime', 'port'])
 

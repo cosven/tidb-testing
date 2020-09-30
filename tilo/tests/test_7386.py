@@ -18,6 +18,12 @@ def test_issue_7386():
     # try to disable auto region-merge
     pd.config_set('disable-remove-extra-replica', 'true')
     pd.config_set('patrol-region-interval', '50000ms')
+    pd.apply_placement_rule({'group_id': 'pd',
+                             'id': 'one-learner',
+                             'start_key': '',
+                             'end_key': '',
+                             'role': 'learner',
+                             'count': 1})
 
     with conn.cursor() as cur:
         cur.execute("drop table if exists t;")
@@ -40,20 +46,28 @@ def test_issue_7386():
     store_ids = [store['store']['id'] for store in stores
                  if 'labels' not in store['store']]
     log.msg(store_ids)
-    used_stores = [peer['store_id'] for peer in region['peers']]
-    target_store = [store_id for store_id in store_ids
-                    if store_id not in used_stores][0]
+
+    target_store = None
+    for peer in region['peers']:
+        if peer.get('is_learner') is True:
+            target_store = peer['store_id']
+
+    if target_store is None:
+        raise Exception('no learner found')
+    # used_stores = [peer['store_id'] for peer in region['peers']]
+    # target_store = [store_id for store_id in store_ids
+    #                 if store_id not in used_stores][0]
 
     # add learner
-    log.msg('add learner and peer for regions')
-    ok = pd.add_learner(region_id, target_store)
-    assert ok, 'add learner failed'
+    # log.msg('add learner and peer for regions')
+    # ok = pd.add_learner(region_id, target_store)
+    # assert ok, 'add learner failed'
     # ok = pd.add_peer(target_region_id, target_store)
     # assert ok, 'add peer failed'
 
     # wait till learner is added
-    log.msg('wait till region peers count == 2')
-    wait_till_true()(lambda: len(pd.get_region(region_id)['peers']) == default_peers_count + 1)
+    # log.msg('wait till region peers count == 2')
+    # wait_till_true()(lambda: len(pd.get_region(region_id)['peers']) == default_peers_count + 1)
     # wait_till_true()(lambda: len(pd.get_region(target_region_id)['peers']) == default_peers_count + 1)
 
     log.msg('sleep for 2s to wait learner apply snapshot')
@@ -81,3 +95,5 @@ def test_issue_7386():
 
     pg.unpartition(target_store_pid)
     conn.close()
+
+    # TODO: use tikv-ctl to check the region
