@@ -56,6 +56,14 @@ class PdClient:
         }
         return self._add_operator(js)
 
+    def remove_peer(self, region_id, store_id):
+        js = {
+            'name': 'remove-peer',
+            'region_id': region_id,
+            'store_id': store_id,
+        }
+        return self._add_operator(js)
+
     def merge_region(self, source_region_id, target_region_id):
         js = {
             'name': 'merge-region',
