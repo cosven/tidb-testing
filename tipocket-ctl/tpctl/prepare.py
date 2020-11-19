@@ -25,6 +25,7 @@ COMMON_OPTIONS = (
     #   for component in COMPONENTS],
 
     optgroup.group('Test case common options'),
+    optgroup.option('--client', default='5'),
     optgroup.option('--run-time', default='10m'),
     optgroup.option('--nemesis', default=''),
     optgroup.option('--purge/--no-purge', default=False),
