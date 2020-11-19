@@ -8,13 +8,13 @@ with K8s, let alone argo. It is pretty hard for us to write and maintain those y
 Tipocket-ctl is designed to auto-generate argo workflow yaml files and provide
 step-by-step guide for developers to **debug** and **run** tipocket test case on K8s.
 
-## Install
+## Installation
 
 ```sh
 # Please ensure that you have python3.6+ installed
 pip3 install 'git+https://github.com/cosven/tidb-testing.git#egg=tpctl&subdirectory=tipocket-ctl'
 
-# Check if install succeed
+# Help
 tpctl --help
 ```
 
@@ -37,19 +37,20 @@ tpctl prepare pipelined-locking --tikv-config config/tpctl-tikv.toml \
     --client 1 --run-time 10h
 ```
 
-> ```
-> Ensure pwd is tipocket directory...
-> Ensure build directory: ./tpctl-build...
-> Generating argo workflow tpctl-build/pipelined-locking.yaml...
->
-> --------------------
-> You can run pipelined-locking with following commands:
->
-> cp config/tpctl-tikv.toml tpctl-build/config/
-> make pipelined-locking
-> cp bin/pipelined-locking tpctl-build/bin/
-> docker build tpctl-build/ -f tpctl-build/tpctl-dockerfile -t hub.pingcap.net/tpctl/tipocket:pipelined-locking
->
-> docker push hub.pingcap.net/tpctl/tipocket:pipelined-locking
-> argo submit tpctl-build/pipelined-locking.yaml
-> ```
+The command output looks like the following:
+```
+Ensure pwd is tipocket directory...
+Ensure build directory: ./tpctl-build...
+Generating argo workflow tpctl-build/pipelined-locking.yaml...
+
+--------------------
+You can run pipelined-locking with following commands:
+
+cp config/tpctl-tikv.toml tpctl-build/config/
+make pipelined-locking
+cp bin/pipelined-locking tpctl-build/bin/
+docker build tpctl-build/ -f tpctl-build/tpctl-dockerfile -t hub.pingcap.net/tpctl/tipocket:pipelined-locking
+
+docker push hub.pingcap.net/tpctl/tipocket:pipelined-locking
+argo submit tpctl-build/pipelined-locking.yaml
+```
