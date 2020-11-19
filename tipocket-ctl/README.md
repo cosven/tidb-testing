@@ -37,6 +37,7 @@ tpctl prepare pipelined-locking --tikv-config config/tpctl-tikv.toml \
     --client 1 --run-time 10h
 ```
 
+> ```
 > Ensure pwd is tipocket directory...
 > Ensure build directory: ./tpctl-build...
 > Generating argo workflow tpctl-build/pipelined-locking.yaml...
@@ -51,3 +52,4 @@ tpctl prepare pipelined-locking --tikv-config config/tpctl-tikv.toml \
 >
 > docker push hub.pingcap.net/tpctl/tipocket:pipelined-locking
 > argo submit tpctl-build/pipelined-locking.yaml
+> ```
