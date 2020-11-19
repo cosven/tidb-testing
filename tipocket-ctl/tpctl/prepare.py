@@ -8,7 +8,7 @@ from click_option_group import optgroup
 
 from tpctl.app import cli
 from tpctl.argo import ArgoCase
-from tpctl.case import Case
+from tpctl.case import Case, CaseInstance
 from tpctl.dockerfile import local_dockerfile
 
 
@@ -30,6 +30,7 @@ COMMON_OPTIONS = (
     optgroup.option('--purge/--no-purge', default=False),
 
     optgroup.group('TiDB cluster options'),
+    optgroup.option('--namespace', default=''),
     optgroup.option('--hub', default='docker.io'),
     optgroup.option('--repository', default='pingcap'),
     optgroup.option('--image-version', default='nightly'),
@@ -94,7 +95,7 @@ def parse_params(params):
     return case_params, params
 
 
-def testcase(binary, name):
+def testcase(binary, name, maintainers):
     def deco(func):
         @wraps(func)
         def wrapper(*args, **params):
@@ -104,6 +105,11 @@ def testcase(binary, name):
             case_params, params = parse_params(params)
             build_image = params['build_image']
 
+            namespace = case_params['namespace']
+            if not namespace:
+                namespace = f'tpctl-{name}'
+                case_params['namespace'] = namespace
+
             if build_image:
                 dockerfile = f'{BUILD_DIR}/tpctl-dockerfile'
                 with open(dockerfile, 'w') as f:
@@ -112,8 +118,9 @@ def testcase(binary, name):
             else:
                 image = 'pingcap/tipocket:latest'
 
-            case = Case(binary, name, image, case_params)
-            argo_case = ArgoCase(case)
+            case = Case(name, binary, maintainers)
+            case_inst = CaseInstance(case, case_params)
+            argo_case = ArgoCase(case_inst, image, notify=True, notify_users=['@yinshaowen'])
             argo_workflow_filepath = f'{BUILD_DIR}/{name}.yaml'
             click.echo(f'Generating argo workflow {argo_workflow_filepath}...')
             with open(argo_workflow_filepath, 'w') as f:
@@ -127,13 +134,14 @@ def testcase(binary, name):
                     config_file = params[f'{component}_config']
                     if config_file:
                         cmds.append(f'cp {config_file} {CONFIG_DIR}/')
+                cmds.append(f'make {binary}')
                 cmds.append(f'cp bin/{binary} {BIN_DIR}/')
                 cmds.append(f'docker build {BUILD_DIR}/'
                             f' -f {BUILD_DIR}/tpctl-dockerfile'
                             f' -t {image}')
                 cmds.append(f'')
                 cmds.append(f'docker push {image}')
-                cmds.append(f'argo submit {argo_workflow_filepath}')
+            cmds.append(f'argo submit {argo_workflow_filepath}')
             if cmds:
                 click.echo('')
                 click.echo('--------------------')
@@ -156,8 +164,18 @@ def prepare():
 @click.option('--concurrency', default='200')
 @click.option('--tidb-replica-read', default='leader')
 @testcase_common_options
-@testcase('bank2', 'scbank2')
+@testcase('bank2', 'scbank2', ['@yinshaowen'])
 def scbank2(**params):
     """
     sc_bank2
+    """
+
+
+@prepare.command()
+@click.option('--strict', default='true')
+@testcase_common_options
+@testcase('pipelined-locking', 'pipelined-locking', ['@yinshaowen'])
+def pipelined_locking(**params):
+    """
+    piplined pessimistic locking
     """
