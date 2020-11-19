@@ -31,6 +31,7 @@ setup(
     install_requires=[
         'click',
         'pyyaml',
+        'click_option_group',
     ],
     extras_require={
     },
