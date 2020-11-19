@@ -1,8 +1,9 @@
+local_dockerfile = '''
 FROM pingcap/alpine-glibc
 
-RUN mkdir -p /config && mkdir -p /resources
+RUN mkdir -p /config
 COPY bin/ /bin/
 COPY config /config
-COPY resources /resources
 
 EXPOSE 8080
+'''
