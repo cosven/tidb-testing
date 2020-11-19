@@ -10,10 +10,10 @@ setup(
     author='Cosven',
     author_email='yinshaowen241@gmail.com',
     packages=[
-        'casectl',
+        'tpctl',
     ],
     package_data={
-        'casectl': []
+        '': ['data/*']
     },
     python_requires=">=3.6",
     url='https://github.com/cosven/tidb-testing/casectl',
@@ -30,6 +30,7 @@ setup(
     ],
     install_requires=[
         'click',
+        'pyyaml',
     ],
     extras_require={
     },
