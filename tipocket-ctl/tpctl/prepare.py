@@ -7,14 +7,13 @@ import yaml
 from click_option_group import optgroup
 
 from tpctl.app import cli
-from tpctl.argo import ArgoCase
-from tpctl.case import Case, CaseInstance
-from tpctl.dockerfile import local_dockerfile
+from tpctl.build import Build
+from tpctl.case import Case
+from tpctl.deploy import Deploy
+from tpctl.env import Env
+from tpctl.tidb_cluster import ComponentName
 
 
-BUILD_DIR = 'tpctl-build'
-BIN_DIR = 'tpctl-build/bin'
-CONFIG_DIR = 'tpctl-build/config'
 # RESOURCES_DIR = 'tpctl-build/resources'
 COMPONENTS = ['tikv', 'tidb', 'pd']
 
@@ -40,6 +39,8 @@ COMMON_OPTIONS = (
     *[optgroup.option(f'--{component}-config', default='', type=click.Path())
       for component in COMPONENTS],
     optgroup.option('--tikv-replicas', default='5'),
+    optgroup.option('--tidb-replicas', default='1'),
+    optgroup.option('--pd-replicas', default='1'),
 
     optgroup.group('K8s options',
                    help='different K8s cluster has different values'),
@@ -60,95 +61,45 @@ def testcase_common_options(func):
     return func
 
 
-def ensure_preconditions():
-    pwd = os.getcwd()
-    if os.path.split(pwd)[-1] != 'tipocket':
-        click.secho('you must run this command in tipocket root directory', fg='red')
-        sys.exit(1)
-
-    def mkdir_p(dir):
-        if not os.path.exists(dir):
-            os.mkdir(dir)
-
-    mkdir_p(BUILD_DIR)
-    mkdir_p(BIN_DIR)
-    mkdir_p(CONFIG_DIR)
-    # mkdir_p(RESOURCES_DIR)
-
-
-def parse_params(params):
-
-    # convert parameters to the format that tipocket test case recognize
-    case_params = {}
-    for key, value in params.items():
-        if key in ['build_image']:
-            continue
-        if key == 'purge':
-            if value is True:
-                value = 'true'
-            else:
-                value = 'false'
-        if key.endswith('-config'):
-            if value:
-                value = '/' + value
-        case_params[key.replace('_', '-')] = value
-
-    return case_params, params
-
-
 def testcase(binary, name, maintainers):
     def deco(func):
         @wraps(func)
         def wrapper(*args, **params):
+            click.echo('---pre')
+            env = Env()
             click.echo(f'Ensure pwd is tipocket directory...')
-            click.echo(f'Ensure build directory: ./{BUILD_DIR}...')
-            ensure_preconditions()
-            case_params, params = parse_params(params)
+            click.echo(f'Ensure workspace directory: ./{env.dir_root}...')
+            env.ensure_preconditions()
+
+            # build case
+            click.echo('---build')
             build_image = params['build_image']
+            config_filepaths = []
+            for component in ComponentName.list_names():
+                config_filepath = params[f'{component}_config']
+                if config_filepath:
+                    config_filepaths.append(config_filepath)
+            build = Build(env, binary, build_image, config_filepaths)
+            build.prepare()
+            image = build.get_image()
+            build_cmds = build.get_howto_cmds()
 
-            namespace = case_params['namespace']
-            if not namespace:
-                namespace = f'tpctl-{name}'
-                case_params['namespace'] = namespace
+            if build_cmds:
+                click.echo('Run following commands to rebuild the case')
+                for cmd in build_cmds:
+                    click.secho(cmd, fg='green')
 
-            if build_image:
-                dockerfile = f'{BUILD_DIR}/tpctl-dockerfile'
-                with open(dockerfile, 'w') as f:
-                    f.write(local_dockerfile)
-                image = f'hub.pingcap.net/tpctl/tipocket:{name}'
-            else:
-                image = 'pingcap/tipocket:latest'
+            # deploy case
+            click.echo('---deploy')
+            case = Case(name, maintainers)
+            deploy = Deploy(env, case, binary, image, params)
+            deploy.prepare()
+            deploy_cmds = deploy.get_howto_cmds()
 
-            case = Case(name, binary, maintainers)
-            case_inst = CaseInstance(case, case_params)
-            argo_case = ArgoCase(case_inst, image, notify=True, notify_users=['@yinshaowen'])
-            argo_workflow_filepath = f'{BUILD_DIR}/{name}.yaml'
-            click.echo(f'Generating argo workflow {argo_workflow_filepath}...')
-            with open(argo_workflow_filepath, 'w') as f:
-                workflow_dict = argo_case.gen_workflow()
-                yaml.dump(workflow_dict, f)
-
-            # generate cmds for running test case
-            cmds = []
-            if build_image:
-                for component in COMPONENTS:
-                    config_file = params[f'{component}_config']
-                    if config_file:
-                        cmds.append(f'cp {config_file} {CONFIG_DIR}/')
-                cmds.append(f'make {binary}')
-                cmds.append(f'cp bin/{binary} {BIN_DIR}/')
-                cmds.append(f'docker build {BUILD_DIR}/'
-                            f' -f {BUILD_DIR}/tpctl-dockerfile'
-                            f' -t {image}')
-                cmds.append(f'')
-                cmds.append(f'docker push {image}')
-            cmds.append(f'argo submit {argo_workflow_filepath}')
-            if cmds:
-                click.echo('')
-                click.echo('--------------------')
-                click.secho(f'You can run {name} with following commands:')
-                click.echo()
-                click.secho('\n'.join(cmds), fg='green')
+            if deploy_cmds:
+                click.echo('Run following commands to deploy the case')
+                for cmd in deploy_cmds:
+                    click.secho(cmd, fg='green')
 
             return func(*args, **params)
         return wrapper
@@ -174,8 +125,9 @@ def scbank2(**params):
 
 @prepare.command()
 @click.option('--strict', default='true')
+@click.option('--contenders', default='1')
 @testcase_common_options
-@testcase('pipelined-locking', 'pipelined-locking', ['@yinshaowen'])
+@testcase('pipelined-locking', 'pipelined-locking', ['@yinshaowen', '@zhaolei'])
 def pipelined_locking(**params):
     """
     piplined pessimistic locking

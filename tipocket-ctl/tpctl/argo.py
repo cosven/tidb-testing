@@ -1,13 +1,22 @@
+import base64
+
 import yaml
 
 from tpctl.case import CaseInstance
+from tpctl.yaml_dump_tidbcluster import dump
 
 
 class ArgoCase:
-    def __init__(self, case: CaseInstance, image,
+    def __init__(self, case: CaseInstance, image, tidb_cluster,
                  notify=False, notify_users=None):
+        # case metadata and build info
         self.case = case
         self.image = image
+
+        # resources info
+        self.tidb_cluster = tidb_cluster
+
+        # notification
         self.notify = notify
         self.notify_users = notify_users
 
@@ -71,6 +80,11 @@ class ArgoCase:
         return step
 
     def gen_notify_template(self, users):
+        def encode(s):
+            return base64.b64encode(bytes(s, 'utf-8')).decode('utf-8')
+        print(self.case.get_cmd())
+        encoded_cmd = encode(self.case.get_cmd())
+        encoded_tidbcluster = encode(dump(self.tidb_cluster.to_json()))
         return {
             'name': 'notify',
             'inputs': {
@@ -83,14 +97,17 @@ class ArgoCase:
                 'name': 'notify-py',
                 'image': 'hub.pingcap.net/tpctl/notify',
                 'imagePullpolicy': 'Always',
-                # FIXME: notify can only notify one user temporarily
                 'args': [
-                    users[0],
+                    ','.join(users),
                     self.case.meta.name,
                     r'{{workflow.name}}',
                     r'{{inputs.parameters.stage}}',
                     '--status',
-                    r'{{inputs.parameters.status}}'
+                    r'{{inputs.parameters.status}}',
+                    '--cmd',
+                    f'{encoded_cmd}',
+                    '--tidbcluster',
+                    f'{encoded_tidbcluster}',
                 ],
                 'env': [
                     {

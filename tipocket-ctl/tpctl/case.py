@@ -1,17 +1,17 @@
 class Case:
-    def __init__(self, name, binary, maintainers=None):
+    def __init__(self, name, maintainers=None):
         self.name = name      # human readable name
-        self.binary = binary  # cmd name in tipocket
         self.maintainers = maintainers or []
 
 
 class CaseInstance:
-    def __init__(self, meta: Case, params):
+    def __init__(self, meta: Case, binary, params):
         self.meta = meta
+        self.binary = binary
         self.params = params
 
     def get_cmd(self):
-        binpath = f'/bin/{self.meta.binary}'
+        binpath = f'/bin/{self.binary}'
         for key, value in self.params.items():
             binpath += f' -{key}="{value}"'
         return binpath

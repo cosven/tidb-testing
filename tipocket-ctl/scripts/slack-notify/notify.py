@@ -2,6 +2,7 @@
 
 import os
 import sys
+from base64 import b64decode
 from datetime import datetime
 from enum import Enum
 
@@ -20,13 +21,19 @@ class Status(Enum):
     failed = 'failed'
 
 
+def decode(s):
+    return b64decode(bytes(s, 'utf-8')).decode('utf-8')
+
+
 @click.command()
 @click.argument('channel')
 @click.argument('case')
 @click.argument('workflow')
 @click.argument('stage')
 @click.option('--status', default='passed')
-def send_message(channel, case, workflow, stage, status):
+@click.option('--cmd', default='')
+@click.option('--tidbcluster', default='')
+def send_message(channel, case, workflow, stage, status, cmd, tidbcluster):
     stage = Stage(stage)
     status = Status(status)
 
@@ -35,6 +42,8 @@ def send_message(channel, case, workflow, stage, status):
     fields.append(('time', f'{datetime.now()}'))
     fields.append(('argo workflow', f'{workflow}'))
     fields.append(('stage', f'{stage.value}'))
+    fields.append(('cmd', decode(cmd)))
+    fields.append(('tidb cluster', decode(tidbcluster)))
     if stage is Stage.end and status is Status.failed:
         color = 'danger'
     else:
