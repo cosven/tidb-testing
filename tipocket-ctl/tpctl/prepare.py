@@ -18,10 +18,15 @@ from tpctl.tidb_cluster import ComponentName
 COMPONENTS = ['tikv', 'tidb', 'pd']
 
 COMMON_OPTIONS = (
+    # NOTE: remember to update parse_params function when
+    # a parameter is modified
+
+    # people who receive notification
+    click.option('--subscriber', multiple=True),
+    click.option('--feature', default='universal'),
+
     optgroup.group('Test case build options'),
     optgroup.option('--build-image/--no-build-image', default=False),
-    # *[optgroup.option(f'--use-tpctl-{component}-config', is_flag=True, default=False)
-    #   for component in COMPONENTS],
 
     optgroup.group('Test case common options'),
     optgroup.option('--client', default='5'),
@@ -70,6 +75,7 @@ def testcase(binary, name, maintainers):
             click.echo(f'Ensure pwd is tipocket directory...')
             click.echo(f'Ensure workspace directory: ./{env.dir_root}...')
             env.ensure_preconditions()
+            feature = params['feature']
 
             # build case
             click.echo('---build')
@@ -79,7 +85,7 @@ def testcase(binary, name, maintainers):
                 config_filepath = params[f'{component}_config']
                 if config_filepath:
                     config_filepaths.append(config_filepath)
-            build = Build(env, binary, build_image, config_filepaths)
+            build = Build(env, feature, binary, build_image, config_filepaths)
             build.prepare()
             image = build.get_image()
             build_cmds = build.get_howto_cmds()
@@ -92,7 +98,7 @@ def testcase(binary, name, maintainers):
             # deploy case
             click.echo('---deploy')
             case = Case(name, maintainers)
-            deploy = Deploy(env, case, binary, image, params)
+            deploy = Deploy(env, feature, case, binary, image, params)
             deploy.prepare()
             deploy_cmds = deploy.get_howto_cmds()
 
@@ -129,6 +135,16 @@ def scbank2(**params):
 @testcase_common_options
 @testcase('pipelined-locking', 'pipelined-locking', ['@yinshaowen', '@zhaolei'])
 def pipelined_locking(**params):
+    """
+    piplined pessimistic locking
+    """
+
+
+@prepare.command()
+@testcase_common_options
+@testcase('gc-in-compaction-filter', 'gc-in-compaction-filter',
+          ['@yinshaowen', '@qupeng'])
+def gc_in_compaction_filter(**params):
     """
     piplined pessimistic locking
     """

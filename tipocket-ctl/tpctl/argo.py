@@ -7,9 +7,10 @@ from tpctl.yaml_dump_tidbcluster import dump
 
 
 class ArgoCase:
-    def __init__(self, case: CaseInstance, image, tidb_cluster,
+    def __init__(self, feature, case: CaseInstance, image, tidb_cluster,
                  notify=False, notify_users=None):
         # case metadata and build info
+        self.feature = feature
         self.case = case
         self.image = image
 
@@ -40,7 +41,7 @@ class ArgoCase:
         main_steps.append([self.gen_case_step()])
         workflow = {
             'metadata': {
-                'generateName': f'tpctl-{case.meta.name}-',
+                'generateName': f'tpctl-{self.case.meta.name}-{self.feature}-',
                 'namespace': 'argo',
             },
             'spec': {
@@ -82,7 +83,6 @@ class ArgoCase:
     def gen_notify_template(self, users):
         def encode(s):
             return base64.b64encode(bytes(s, 'utf-8')).decode('utf-8')
-        print(self.case.get_cmd())
         encoded_cmd = encode(self.case.get_cmd())
         encoded_tidbcluster = encode(dump(self.tidb_cluster.to_json()))
         return {

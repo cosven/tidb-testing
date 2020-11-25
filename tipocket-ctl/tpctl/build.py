@@ -5,8 +5,9 @@ class Build:
     """
     output: artifacts
     """
-    def __init__(self, env, binary, build_image, config_filepaths):
+    def __init__(self, env, feature, binary, build_image, config_filepaths):
         self._env = env
+        self._feature = feature
         self._binary = binary
         self._config_filepaths = config_filepaths
         self._build_image = build_image
@@ -17,7 +18,7 @@ class Build:
             dockerfile = f'{self._env.dir_root}/tpctl-dockerfile'
             with open(dockerfile, 'w') as f:
                 f.write(local_dockerfile)
-            image = f'hub.pingcap.net/tpctl/tipocket:{self._binary}'
+            image = f'hub.pingcap.net/tpctl/tipocket:{self._binary}-{self._feature}'
         else:
             image = 'pingcap/tipocket:latest'
         self._image = image
