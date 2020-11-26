@@ -1,0 +1,15 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IoChaos
+metadata:
+  name: io-delay
+spec:
+  action: latency
+  mode: all
+  selector:
+    labelSelectors:
+      app.kubernetes.io/instance: ctc1
+      app.kubernetes.io/component: tikv
+  volumePath: /var/lib/tikv
+  path: "/var/lib/tikv/db/**/*"
+  delay: "0ms"
+  percent: 50

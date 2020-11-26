@@ -1,0 +1,74 @@
+apiVersion: pingcap.com/v1alpha1
+kind: TidbCluster
+metadata:
+  name: ctc1
+spec:
+  # configUpdateStrategy: RollingUpdate
+  enablePVReclaim: false
+  imagePullPolicy: Always
+  pvReclaimPolicy: Delete
+  timezone: Asia/Shanghai
+  pd:
+    image: pingcap/pd:v4.0.1
+    replicas: 3
+    limits:
+      cpu: "8"
+      memory: "8Gi"
+    requests:
+      storage: 10Gi
+    # storageClassName: nvme
+    config: {}
+  tidb:
+    image: pingcap/tidb:v4.0.1
+    replicas: 1
+    service:
+      type: NodePort
+    limits:
+      cpu: "16"
+      memory: "16Gi"
+    config: {}
+  tikv:
+    image: pingcap/tikv:v4.0.1
+    config:
+      log-level: info
+      rocksdb:
+        defaultcf:
+          block-size: "16KB"  # default 16KB
+          write-buffer-size: "4MB"  # default 128MB
+          target-file-size-base: "2MB"  # default 8MB
+        writecf:
+          block-size: "32KB"
+          write-buffer-size: "4MB"
+          target-file-size-base: "4MB"
+    replicas: 5
+    requests:
+      storage: 10Gi
+    limits:
+      cpu: "8"
+      memory: "16Gi"
+    # storageClassName: nvme
+
+---
+
+apiVersion: pingcap.com/v1alpha1
+kind: TidbMonitor
+metadata:
+  name: ctc1
+spec:
+  clusters:
+  - name: ctc1
+  prometheus:
+    baseImage: prom/prometheus
+    version: v2.18.1
+  grafana:
+    baseImage: grafana/grafana
+    version: 6.1.6
+    service:
+      type: NodePort
+  initializer:
+    baseImage: pingcap/tidb-monitor-initializer
+    version: v4.0.2
+  reloader:
+    baseImage: pingcap/tidb-monitor-reloader
+    version: v1.0.1
+  imagePullPolicy: IfNotPresent

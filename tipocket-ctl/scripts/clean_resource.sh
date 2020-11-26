@@ -4,7 +4,7 @@ shopt -s expand_aliases
 source .env
 
 if [[ -z "$1" ]]; then
-    echo "Usage: $1 <case>"
+    echo "Usage: $1 <case-fullname>"
     exit 1
 fi
 

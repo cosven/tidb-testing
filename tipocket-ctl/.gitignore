@@ -1,0 +1,6 @@
+*.swp
+.venv/
+dist/
+tpctl.egg-info/
+\#*\#
+.\#*

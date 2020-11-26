@@ -1,2 +1,6 @@
 *.db
+
 *.pyc
+
+__pycache__
+.ccls-cache
