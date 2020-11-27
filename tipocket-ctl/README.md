@@ -28,7 +28,7 @@ tpctl --help
 1. customize the tidb cluster config
 
 ```sh
-echo <<EOF >> config/tpctl-tikv.toml
+echo <<EOF >> config/tpctl-async-raft-tikv.toml
 [raftstore]
 delay-sync-us = 0
 EOF
@@ -39,7 +39,7 @@ EOF
 ```sh
 tpctl prepare scbank2 --build-image --tikv-config config/tpctl-async-raft-tikv.toml --run-time '12h' \
     --nemesis 'random_kill,partition_one,shuffle-leader-scheduler,shuffle-region-scheduler,random-merge-scheduler' \
-    --subscriber '@xxx --subscriber '@yyy' \
+    --subscriber '@yinshaowen' --subscriber '@yyy' \
     --loki-password '' --loki-addr '' --no-purge --feature 'async-raft' \
     --pd-replicas 1 --tidb-replicas 1 --tikv-replicas 7 --image-version "release-4.0-nightly"
 ```
