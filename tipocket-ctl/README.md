@@ -14,6 +14,11 @@ step-by-step guide for developers to **debug** and **run** tipocket test case on
 # Please ensure that you have python3.6+ installed
 pip3 install 'git+https://github.com/cosven/tidb-testing.git#egg=tpctl&subdirectory=tipocket-ctl'
 
+# Development install
+git clone git@github.com:cosven/tidb-testing.git
+cd tidb-testing/tipocket-ctl
+pip3 install -e ./
+
 # Help
 tpctl --help
 ```
