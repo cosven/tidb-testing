@@ -1,0 +1,5 @@
+
+
+ENC_GROUP_SIZE = 8
+ENC_MARKER = b'0xFF'
+ENC_PAD = b'0x0'
