@@ -30,7 +30,7 @@ def encode_int_to_cmp_uint(v: int) -> int:
     return i64_to_u64(v) ^ i64_sign_mask
 
 
-def encode_int(ba: bytearray, v: int) -> bytearray:
+def encode_int(b: bytes, v: int) -> bytes:
     """
     :param v: int64
 
@@ -39,9 +39,7 @@ def encode_int(ba: bytearray, v: int) -> bytearray:
     b'8000000000000001'
     """
     u = encode_int_to_cmp_uint(v)
-    b = u.to_bytes(8, byteorder='big', signed=False)
-    ba.extend(b)
-    return ba
+    return b + u.to_bytes(8, byteorder='big', signed=False)
 
 
 def decode_uint_desc(b: bytes) -> (bytes, int):
