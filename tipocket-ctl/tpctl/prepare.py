@@ -54,9 +54,10 @@ COMMON_OPTIONS = (
 
     optgroup.group('Test case logging options',
                    help='usually, you need not to change this'),
-    optgroup.option('--loki-addr', default='http://gateway.loki.svc'),
-    optgroup.option('--loki-username', default='loki'),
-    optgroup.option('--loki-password', default='admin'),
+    # set loki settings to empty since loki does not work well currently
+    optgroup.option('--loki-addr', default=''),  # http://gateway.loki.svc'
+    optgroup.option('--loki-username', default=''),  # loki
+    optgroup.option('--loki-password', default=''),  # admin
 )
 
 
@@ -147,4 +148,23 @@ def pipelined_locking(**params):
 def gc_in_compaction_filter(**params):
     """
     piplined pessimistic locking
+    """
+
+
+@prepare.command()
+@click.option('--key-start', 'KeyStart', default='0')
+@click.option('--key-num', 'KeyNum', default='100000')
+@click.option('--read-probability', 'ReadProbability', default='60')
+# TODO: a typo in tipocket/rawkv-linearizability
+@click.option('--write-probability', 'WriteProbaility', default='35')
+@click.option('--10k-value-num', 'ValueNum10KB', default='400')
+@click.option('--100k-value-num', 'ValueNum100KB', default='400')
+@click.option('--1m-value-num', 'ValueNum1MB', default='200')
+@click.option('--5m-value-num', 'ValueNum5MB', default='40')
+@testcase_common_options
+@testcase('rawkv-linearizability', 'rawkv-linearizability',
+          ['@yinshaowen', '@gengliqi'])
+def rawkv_linearizability(**params):
+    """
+    rawkv linearizability
     """
