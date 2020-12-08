@@ -8,7 +8,7 @@ def parse_params(params):
     # convert parameters to the format that tipocket test case recognize
     case_params = {}
     for key, value in params.items():
-        if key in ['build_image', 'subscriber', 'feature']:
+        if key in ['build_image', 'subscriber', 'feature', 'cron', 'cron_schedule']:
             continue
         # convert True/False to 'true/false'
         if key == 'purge':

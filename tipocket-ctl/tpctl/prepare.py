@@ -28,6 +28,10 @@ COMMON_OPTIONS = (
     optgroup.group('Test case build options'),
     optgroup.option('--build-image/--no-build-image', default=False),
 
+    optgroup.group('Test case deploy options'),
+    optgroup.option('--cron', default=False),
+    optgroup.option('--cron-schedule', default='* * * * *'),
+
     optgroup.group('Test case common options'),
     optgroup.option('--client', default='5'),
     optgroup.option('--run-time', default='10m'),

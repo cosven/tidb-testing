@@ -83,6 +83,7 @@ class ArgoCase:
     def gen_notify_template(self, users):
         def encode(s):
             return base64.b64encode(bytes(s, 'utf-8')).decode('utf-8')
+
         encoded_cmd = encode(self.case.get_cmd())
         encoded_tidbcluster = encode(dump(self.tidb_cluster.to_json()))
         return {
@@ -151,3 +152,18 @@ class ArgoCase:
 
     def _get_case_template_name(self):
         return self.case.meta.name
+
+
+class ArgoCronCase(ArgoCase):
+    def __init__(self, feature, case: CaseInstance, image, tidb_cluster,
+                 notify=False, notify_users=None, cron_params=None):
+        super().__init__(feature, case, image, tidb_cluster,
+                         notify, notify_users)
+        self.cron_params = cron_params
+
+    def gen_workflow(self):
+        workflow = super().gen_workflow()
+        workflow['kind'] = 'CronWorkflow'
+        for k, v in self.cron_params.items():
+            workflow['spec'][k] = v
+        return workflow
