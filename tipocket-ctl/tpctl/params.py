@@ -18,14 +18,12 @@ def parse_params(params):
                 value = 'true'
             else:
                 value = 'false'
-        # convert the config path to absolute form
-        # read the config file content and encode it to base64
         if key.endswith('_config'):
-            # value is a valid config file path
-            # read the content in config file and encode it with base64
-            # https://github.com/pingcap/tipocket/pull/330
+            # value should be a valid config file path
+            # TODO: catch FileNotExist error or validate the path somewhere
             if value:
-                # TODO: catch FileNotExist error or validate the path somewhere
+                # read the content in config file and encode it with base64
+                # https://github.com/pingcap/tipocket/pull/330
                 with open(value) as f:
                     content = f.read()
                 content_bytes = bytes(content, 'utf-8')
@@ -43,9 +41,8 @@ def get_tidb_cluster_spec_from_params(params):
     components = []
     component_names = ComponentName.list_names()
     for component in component_names:
-        config_key = f'{component}_config'
-        config_path = params[config_key]
-        # NOTE: the program must run in tipocket root directory
+        config_path = params[f'{component}_config']
+        # FIXME: the program must run in tipocket root directory
         if config_path:
             with open(config_path) as f:
                 config = f.read()
