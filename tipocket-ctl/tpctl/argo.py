@@ -14,6 +14,9 @@ class ArgoCase:
         self.case = case
         self.image = image
 
+        # to name argo workflow and namespace
+        self.deploy_id = f'tpctl-{self.case.meta.name}-{self.feature}'
+
         # resources info
         self.tidb_cluster = tidb_cluster
 
@@ -41,7 +44,7 @@ class ArgoCase:
         main_steps.append([self.gen_case_step()])
         workflow = {
             'metadata': {
-                'generateName': f'tpctl-{self.case.meta.name}-{self.feature}-',
+                'generateName': self.deploy_id + '-',
                 'namespace': 'argo',
             },
             'spec': {
@@ -160,10 +163,10 @@ class ArgoCronCase(ArgoCase):
         super().__init__(feature, case, image, tidb_cluster,
                          notify, notify_users)
         self.cron_params = cron_params
+        self.deploy_id = f'tpctl-{self.case.meta.name}-{self.feature}-cron'
 
     def gen_workflow(self):
         workflow = super().gen_workflow()
-        workflow['metadata']['generateName'] += 'cron-'
         workflow['kind'] = 'CronWorkflow'
         workflow['spec'] = {'workflowSpec': workflow['spec']}
         for k, v in self.cron_params.items():
