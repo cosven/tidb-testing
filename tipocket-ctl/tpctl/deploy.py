@@ -14,8 +14,9 @@ class Deploy:
         self.binary = binary
         self.image = image
         self.params = params
+        self._is_cron = params['cron'] is True
 
-        if params['cron']:
+        if self._is_cron:
             self._argo_workflow_filepath = \
                 f'{env.dir_root}/{case.name}-{feature}-cron.yaml'
         else:
@@ -39,7 +40,7 @@ class Deploy:
         case_inst = CaseInstance(self.case, self.binary, case_params)
         tidb_cluster = get_tidb_cluster_spec_from_params(self.params)
         subscribers = self.params['subscriber'] or None
-        if self.params['cron']:
+        if self._is_cron:
             case_params['namespace'] += '-cron'
             return ArgoCronCase(self.feature, case_inst, self.image, tidb_cluster,
                                 notify=True, notify_users=subscribers,
@@ -54,7 +55,7 @@ class Deploy:
                             notify=True, notify_users=subscribers)
 
     def get_howto_cmds(self):
-        if self.params['cron']:
+        if self._is_cron:
             return [
                 f'argo cron create {self._argo_workflow_filepath}'
             ]

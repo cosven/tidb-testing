@@ -1,5 +1,16 @@
 from tpctl.tidb_cluster import ComponentName, ComponentSpec, TidbClusterSpec
 
+# Those options (Most are in prepare.COMMON_OPTIONS) won't be passed to tipocket case.
+IGNORE_OPTION_LIST = [
+    'build_image',
+    'subscriber',
+    'feature',
+    'cron',
+    'cron_schedule',
+    'cron_concurrency_policy',
+    'cron_starting_deadline_seconds',
+    'cron_timezone'
+]
 
 def parse_params(params):
     """
@@ -8,7 +19,7 @@ def parse_params(params):
     # convert parameters to the format that tipocket test case recognize
     case_params = {}
     for key, value in params.items():
-        if key in ['build_image', 'subscriber', 'feature', 'cron', 'cron_schedule', 'cron_concurrency_policy', 'cron_starting_deadline_seconds']:
+        if key in IGNORE_OPTION_LIST:
             continue
         # convert True/False to 'true/false'
         if key == 'purge':

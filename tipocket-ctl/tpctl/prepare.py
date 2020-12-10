@@ -17,8 +17,11 @@ from tpctl.tidb_cluster import ComponentName
 # RESOURCES_DIR = 'tpctl-build/resources'
 COMPONENTS = ['tikv', 'tidb', 'pd']
 
+
+# Those options would be passed to tipocket case,
+# except those in params.IGNORE_OPTION_LIST.
 COMMON_OPTIONS = (
-    # NOTE: remember to update parse_params function when
+    # NOTE: remember to update params.IGNORE_OPTION_LIST when
     # a parameter is modified
 
     # people who receive notification
@@ -32,7 +35,7 @@ COMMON_OPTIONS = (
     optgroup.option('--cron/--not-cron', default=False),
     optgroup.option('--cron-schedule', default='30 17 * * *'),
     optgroup.option('--cron-timezone', default='Asia/Shanghai'),
-    optgroup.option('--cron-concurrency-policy', default='Allow'),
+    optgroup.option('--cron-concurrency-policy', default='Forbid'),
     optgroup.option('--cron-starting-deadline-seconds', default=0),
 
     optgroup.group('Test case common options'),
@@ -66,6 +69,7 @@ COMMON_OPTIONS = (
     optgroup.option('--loki-username', default=''),  # loki
     optgroup.option('--loki-password', default=''),  # admin
 )
+
 
 
 def testcase_common_options(func):
@@ -179,8 +183,7 @@ def rawkv_linearizability(**params):
 
 @prepare.command()
 @testcase_common_options
-@testcase('hello', 'hello',
-          ['@chenweiwen'])
+@testcase('hello', 'hello', ['@chenweiwen'])
 def hello(**params):
     """
     For debugging of tpctl itself.
