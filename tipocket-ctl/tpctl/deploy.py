@@ -15,8 +15,12 @@ class Deploy:
         self.image = image
         self.params = params
 
-        self._argo_workflow_filepath = \
-            f'{env.dir_root}/{case.name}-{feature}.yaml'
+        if params['cron']:
+            self._argo_workflow_filepath = \
+                f'{env.dir_root}/{case.name}-{feature}-cron.yaml'
+        else:
+            self._argo_workflow_filepath = \
+                f'{env.dir_root}/{case.name}-{feature}.yaml'
 
     def prepare(self):
         argo_case = self.generate_case()
@@ -39,12 +43,21 @@ class Deploy:
             case_params['namespace'] += '-cron'
             return ArgoCronCase(self.feature, case_inst, self.image, tidb_cluster,
                                 notify=True, notify_users=subscribers,
-                                cron_params={'schedule': self.params['cron_schedule']})
+                                cron_params={
+                                    'schedule': self.params['cron_schedule'],
+                                    'concurrencyPolicy': self.params['cron_concurrency_policy'],
+                                    'startingDeadlineSeconds': self.params['cron_starting_deadline_seconds']
+                                })
         else:
             return ArgoCase(self.feature, case_inst, self.image, tidb_cluster,
                             notify=True, notify_users=subscribers)
 
     def get_howto_cmds(self):
-        return [
-            f'argo submit {self._argo_workflow_filepath}'
-        ]
+        if self.params['cron']:
+            return [
+                f'argo cron create {self._argo_workflow_filepath}'
+            ]
+        else:
+            return [
+                f'argo submit {self._argo_workflow_filepath}'
+            ]

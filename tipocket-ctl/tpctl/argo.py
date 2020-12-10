@@ -163,7 +163,9 @@ class ArgoCronCase(ArgoCase):
 
     def gen_workflow(self):
         workflow = super().gen_workflow()
+        workflow['metadata']['generateName'] += 'cron-'
         workflow['kind'] = 'CronWorkflow'
+        workflow['spec'] = {'workflowSpec': workflow['spec']}
         for k, v in self.cron_params.items():
             workflow['spec'][k] = v
         return workflow
