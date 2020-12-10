@@ -31,8 +31,9 @@ COMMON_OPTIONS = (
     optgroup.group('Test case deploy options'),
     optgroup.option('--cron/--not-cron', default=False),
     optgroup.option('--cron-schedule', default='30 17 * * *'),
-    optgroup.option('--cron-concurrency-policy', default='Replace'),
-    optgroup.option('--cron-starting-deadline-seconds', default='0'),
+    optgroup.option('--cron-timezone', default='Asia/Shanghai'),
+    optgroup.option('--cron-concurrency-policy', default='Allow'),
+    optgroup.option('--cron-starting-deadline-seconds', default=0),
 
     optgroup.group('Test case common options'),
     optgroup.option('--client', default='5'),
@@ -173,4 +174,14 @@ def gc_in_compaction_filter(**params):
 def rawkv_linearizability(**params):
     """
     rawkv linearizability
+    """
+
+
+@prepare.command()
+@testcase_common_options
+@testcase('hello', 'hello',
+          ['@chenweiwen'])
+def hello(**params):
+    """
+    For debugging of tpctl itself.
     """

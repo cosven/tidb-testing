@@ -46,7 +46,8 @@ class Deploy:
                                 cron_params={
                                     'schedule': self.params['cron_schedule'],
                                     'concurrencyPolicy': self.params['cron_concurrency_policy'],
-                                    'startingDeadlineSeconds': self.params['cron_starting_deadline_seconds']
+                                    'startingDeadlineSeconds': self.params['cron_starting_deadline_seconds'],
+                                    'timezone': self.params['cron_timezone']
                                 })
         else:
             return ArgoCase(self.feature, case_inst, self.image, tidb_cluster,
