@@ -1,0 +1,14 @@
+---pre
+Ensure pwd is tipocket directory...
+Ensure workspace directory: ./tpctl-build...
+---build
+Run following commands to rebuild the case
+make hello
+cp bin/hello tpctl-build/bin/
+docker build tpctl-build/ -f tpctl-build/tpctl-dockerfile -t hub.pingcap.net/tpctl/tipocket:hello-test-tpctl
+
+docker push hub.pingcap.net/tpctl/tipocket:hello-test-tpctl
+---deploy
+Generating argo workflow tpctl-build/hello-test-tpctl.yaml...
+Run following commands to deploy the case
+argo submit tpctl-build/hello-test-tpctl.yaml
