@@ -32,9 +32,6 @@ class Build:
         bin_dir = self._env.dir_bin
         cmds = []
         if self._build_image:
-            for config_filepath in self._config_filepaths:
-                if config_filepath:
-                    cmds.append(f'cp {config_filepath} {config_dir}/')
             cmds.append(f'make {binary}')
             cmds.append(f'cp bin/{binary} {bin_dir}/')
             cmds.append(f'docker build {root_dir}/'

@@ -1,3 +1,5 @@
+import base64
+
 from tpctl.tidb_cluster import ComponentName, ComponentSpec, TidbClusterSpec
 
 # Those options (Most are in prepare.COMMON_OPTIONS) won't be passed to tipocket case.
@@ -27,10 +29,17 @@ def parse_params(params):
                 value = 'true'
             else:
                 value = 'false'
-        # convert the config path to absolute form
         if key.endswith('_config'):
+            # value should be a valid config file path
+            # TODO: catch FileNotExist error or validate the path somewhere
             if value:
-                value = '/' + value
+                # read the content in config file and encode it with base64
+                # https://github.com/pingcap/tipocket/pull/330
+                with open(value) as f:
+                    content = f.read()
+                content_bytes = bytes(content, 'utf-8')
+                b64content = base64.b64encode(content_bytes).decode('utf-8')
+                value = f'base64://{b64content}'
         case_params[key.replace('_', '-')] = value
     return case_params
 
