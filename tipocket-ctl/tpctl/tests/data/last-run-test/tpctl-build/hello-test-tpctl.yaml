@@ -1,0 +1,82 @@
+metadata:
+  generateName: tpctl-hello-test-tpctl-
+  namespace: argo
+spec:
+  entrypoint: main
+  onExit: on-exit
+  templates:
+  - name: main
+    steps:
+    - - arguments:
+          parameters:
+          - name: stage
+            value: running
+          - name: status
+            value: passed
+        name: notify-start
+        template: notify
+    - - name: hello
+        template: hello
+  - name: on-exit
+    steps:
+    - - arguments:
+          parameters:
+          - name: stage
+            value: end
+          - name: status
+            value: failed
+        name: notify-end-failed
+        template: notify
+        when: '{{workflow.status}} != Succeeded'
+      - arguments:
+          parameters:
+          - name: stage
+            value: end
+          - name: status
+            value: passed
+        name: notify-end-passed
+        template: notify
+        when: '{{workflow.status}} == Succeeded'
+  - container:
+      args:
+      - '@chenweiwen'
+      - hello
+      - '{{workflow.name}}'
+      - '{{inputs.parameters.stage}}'
+      - --status
+      - '{{inputs.parameters.status}}'
+      - --cmd
+      - L2Jpbi9oZWxsbyAtcnVuLXRpbWU9IjJtIiAtY2xpZW50PSI1IiAtbmVtZXNpcz0iIiAtcHVyZ2U9ImZhbHNlIiAtbmFtZXNwYWNlPSJ0cGN0bC1oZWxsby10ZXN0LXRwY3RsIiAtaHViPSJkb2NrZXIuaW8iIC1yZXBvc2l0b3J5PSJwaW5nY2FwIiAtaW1hZ2UtdmVyc2lvbj0ibmlnaHRseSIgLXRpa3YtaW1hZ2U9IiIgLXRpZGItaW1hZ2U9IiIgLXBkLWltYWdlPSIiIC10aWt2LWNvbmZpZz0iIiAtdGlkYi1jb25maWc9IiIgLXBkLWNvbmZpZz0iIiAtdGlrdi1yZXBsaWNhcz0iNSIgLXRpZGItcmVwbGljYXM9IjEiIC1wZC1yZXBsaWNhcz0iMSIgLXN0b3JhZ2UtY2xhc3M9ImxvY2FsLXN0b3JhZ2UiIC1sb2tpLWFkZHI9IiIgLWxva2ktdXNlcm5hbWU9IiIgLWxva2ktcGFzc3dvcmQ9IiI=
+      - --tidbcluster
+      - cGQ6CiAgY29uZmlnOiAnJwogIGltYWdlOiBkb2NrZXIuaW8vcGluZ2NhcC9wZDpuaWdodGx5CiAgbmFtZTogcGQKICByZXBsaWFjczogJzEnCnRpZGI6CiAgY29uZmlnOiAnJwogIGltYWdlOiBkb2NrZXIuaW8vcGluZ2NhcC90aWRiOm5pZ2h0bHkKICBuYW1lOiB0aWRiCiAgcmVwbGlhY3M6ICcxJwp0aWt2OgogIGNvbmZpZzogJycKICBpbWFnZTogZG9ja2VyLmlvL3BpbmdjYXAvdGlrdjpuaWdodGx5CiAgbmFtZTogdGlrdgogIHJlcGxpYWNzOiAnNScK
+      env:
+      - name: SLACK_BOT_TOKEN
+        valueFrom:
+          secretKeyRef:
+            key: token
+            name: tipocket-slack-token
+      image: hub.pingcap.net/tpctl/notify
+      imagePullpolicy: Always
+      name: notify-py
+    inputs:
+      parameters:
+      - name: stage
+      - default: passed
+        name: status
+    name: notify
+  - container:
+      command:
+      - sh
+      - -c
+      - /bin/hello -run-time="2m" -client="5" -nemesis="" -purge="false" -namespace="tpctl-hello-test-tpctl"
+        -hub="docker.io" -repository="pingcap" -image-version="nightly" -tikv-image=""
+        -tidb-image="" -pd-image="" -tikv-config="" -tidb-config="" -pd-config=""
+        -tikv-replicas="5" -tidb-replicas="1" -pd-replicas="1" -storage-class="local-storage"
+        -loki-addr="" -loki-username="" -loki-password=""
+      image: hub.pingcap.net/tpctl/tipocket:hello-test-tpctl
+      imagePullpolicy: Always
+      name: hello
+    metadata:
+      labels:
+        ns: tpctl-hello-test-tpctl
+    name: hello

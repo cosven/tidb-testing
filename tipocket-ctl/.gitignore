@@ -4,3 +4,4 @@ dist/
 tpctl.egg-info/
 \#*\#
 .\#*
+tpctl/tests/last-run-test
