@@ -168,3 +168,12 @@ def rawkv_linearizability(**params):
     """
     rawkv linearizability
     """
+
+@prepare.command()
+@testcase_common_options
+@click.option('--hello-string', default='1')
+@testcase('hello', 'hello', ['@chenweiwen'])
+def hello(**params):
+    """
+    Weiwen Chen's hello world.
+    """
