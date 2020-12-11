@@ -17,9 +17,11 @@ class Deploy:
         self._is_cron = params['cron'] is True
 
         if self._is_cron:
+            self.deploy_id = f'tpctl-{self.case.name}-{self.feature}-cron'
             self._argo_workflow_filepath = \
                 f'{env.dir_root}/{case.name}-{feature}-cron.yaml'
         else:
+            self.deploy_id = f'tpctl-{self.case.name}-{self.feature}'
             self._argo_workflow_filepath = \
                 f'{env.dir_root}/{case.name}-{feature}.yaml'
 
@@ -38,7 +40,7 @@ class Deploy:
         subscribers = self.params['subscriber'] or None
         if self._is_cron:
             argo_case = ArgoCronCase(self.feature, case_inst, self.image, tidb_cluster,
-                                     notify=True, notify_users=subscribers,
+                                     deploy_id=self.deploy_id, notify=True, notify_users=subscribers,
                                      cron_params={
                                          'schedule': self.params['cron_schedule'],
                                          'concurrencyPolicy': self.params['cron_concurrency_policy'],
@@ -47,10 +49,10 @@ class Deploy:
                                      })
         else:
             argo_case = ArgoCase(self.feature, case_inst, self.image, tidb_cluster,
-                                 notify=True, notify_users=subscribers)
+                                 deploy_id=self.deploy_id, notify=True, notify_users=subscribers)
         namespace = case_params['namespace']
         if not namespace:
-            case_params['namespace'] = argo_case.deploy_id
+            case_params['namespace'] = self.deploy_id
         return argo_case
 
     def get_howto_cmds(self):

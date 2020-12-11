@@ -8,14 +8,14 @@ from tpctl.yaml_dump_tidbcluster import dump
 
 class ArgoCase:
     def __init__(self, feature, case: CaseInstance, image, tidb_cluster,
-                 notify=False, notify_users=None):
+                 deploy_id="", notify=False, notify_users=None):
         # case metadata and build info
         self.feature = feature
         self.case = case
         self.image = image
 
         # to name argo workflow and namespace
-        self.deploy_id = f'tpctl-{self.case.meta.name}-{self.feature}'
+        self.deploy_id = deploy_id
 
         # resources info
         self.tidb_cluster = tidb_cluster
@@ -159,11 +159,10 @@ class ArgoCase:
 
 class ArgoCronCase(ArgoCase):
     def __init__(self, feature, case: CaseInstance, image, tidb_cluster,
-                 notify=False, notify_users=None, cron_params=None):
+                 deploy_id="", notify=False, notify_users=None, cron_params=None):
         super().__init__(feature, case, image, tidb_cluster,
-                         notify, notify_users)
+                         deploy_id, notify, notify_users)
         self.cron_params = cron_params
-        self.deploy_id = f'tpctl-{self.case.meta.name}-{self.feature}-cron'
 
     def gen_workflow(self):
         workflow = super().gen_workflow()
