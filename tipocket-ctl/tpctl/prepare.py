@@ -34,15 +34,13 @@ COMMON_OPTIONS = (
     optgroup.group('Test case deploy options'),
     optgroup.option('--cron/--not-cron', default=False),
     optgroup.option('--cron-schedule', default='30 17 * * *'),
-    optgroup.option('--cron-timezone', default='Asia/Shanghai'),
-    optgroup.option('--cron-concurrency-policy', default='Forbid'),
-    optgroup.option('--cron-starting-deadline-seconds', default=0),
 
     optgroup.group('Test case common options'),
     optgroup.option('--client', default='5'),
     optgroup.option('--run-time', default='10m'),
     optgroup.option('--nemesis', default=''),
     optgroup.option('--purge/--no-purge', default=False),
+    optgroup.option('--delns/--no-delns', 'delNS', default=False),
 
     optgroup.group('TiDB cluster options'),
     optgroup.option('--namespace', default=''),
