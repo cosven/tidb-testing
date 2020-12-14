@@ -5,17 +5,7 @@ import click
 HELP_STRING = """
 generate debug environment into .env file.
 
-run:
-
-source .env
-
-\b
-Those shell commands are available in .env
-- case_log
-- ls_cluster_pods
-- cluster_pod_log {pod-id} [type]
-- ssh_cluster_pod {pod-id}
-- grafana 
+    Run `source .env` to get commands.
 
 \b
 You can find argument {deploy-id} and {cluster-namespace} in slack notification:
