@@ -106,7 +106,7 @@ def generate_script(deploy_id, cluster_namespace):
 def print_debug_help():
     click.echo('generate .env in current directory')
     click.echo('Run:')
-    click.secho('     source .env', fg='green')
+    click.secho('source .env', fg='green')
     click.echo('to get debug commands.')
 
 
@@ -117,9 +117,19 @@ def debug(**params):
     """
     Dependency: argo and kubectl are installed and properly configured in current machine.
     """
+    deploy_id = params['deploy_id']
+    cluster_namespace = params['cluster_namespace']
+
+    if deploy_id is None or cluster_namespace is None:
+        click.echo('No deploy-id or cluster-namespace specified')
+        click.echo('Refer to slack notification')
+        click.echo('Or run:')
+        click.secho('tpctl debug --help', fg='green')
+        return
+
     with open(".env", 'wt') as f:
         f.write(generate_script(
-            deploy_id=params['deploy_id'],
-            cluster_namespace=params['cluster_namespace'],
+            deploy_id=deploy_id,
+            cluster_namespace=cluster_namespace
         ))
     print_debug_help()
