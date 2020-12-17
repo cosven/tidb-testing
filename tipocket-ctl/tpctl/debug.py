@@ -1,4 +1,5 @@
 import inspect
+import os
 import pathlib
 
 import click
@@ -18,22 +19,39 @@ tpctl-hello-test-tpctl-q948q
 """
 
 
-def generate_script(deploy_id):
-    variables = inspect.cleandoc("""
-    DEPLOY_ID={}
-    """.format(deploy_id))
+class DebugToolBox:
+    """
+    Prototype of a certain debug task.
+    Use it to generate debug/ dir with commands in debug/.env
+    """
 
-    with open(pathlib.Path(__file__).parent.absolute() / './scripts/env_raw.sh', 'rt') as f:
-        functions = ''.join(f.readlines())
-    return variables + '\n' + functions
+    def __init__(self, deploy_id, debug_parent="/tmp/"):
+        self.deploy_id = deploy_id
+        self.debug_parent = pathlib.Path(debug_parent)
+        self.debug_dir = pathlib.Path(debug_parent) / deploy_id
 
+    def generate_all(self):
+        if not os.path.exists(self.debug_dir):
+            os.mkdir(self.debug_dir)
+        with open(pathlib.Path(self.debug_dir) / ".env", 'wt') as f:
+            f.write(self.script())
 
-def print_debug_help():
-    click.echo(
-        'Generate .env in current directory\n' +
-        'Run to get debug commands:\n' +
-        click.style('source .env', fg='green')
-    )
+    def script(self):
+        variables = inspect.cleandoc("""
+        DEPLOY_ID={}
+        """.format(self.deploy_id))
+
+        with open(pathlib.Path(__file__).parent.absolute() / './scripts/env_raw.sh', 'rt') as f:
+            functions = ''.join(f.readlines())
+        return variables + '\n' + functions
+
+    def print_help(self):
+        click.echo(
+            'Generate .env in {}\n'.format(self.debug_dir) +
+            'Run to get debug commands:\n' +
+            click.style('cd {}\n'.format(self.debug_dir), fg='green') +
+            click.style('source .env', fg='green')
+        )
 
 
 @click.command(help=HELP_STRING)
@@ -42,10 +60,6 @@ def debug(**params):
     """
     Dependency: argo and kubectl are installed and properly configured in current machine.
     """
-    deploy_id = params['deploy_id']
-
-    with open(".env", 'wt') as f:
-        f.write(generate_script(
-            deploy_id=deploy_id
-        ))
-    print_debug_help()
+    toolbox = DebugToolBox(params['deploy_id'])
+    toolbox.generate_all()
+    toolbox.print_help()
