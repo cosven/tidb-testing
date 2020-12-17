@@ -24,7 +24,7 @@ def parse_params(params):
         if key in IGNORE_OPTION_LIST:
             continue
         # convert True/False to 'true/false'
-        if key == 'purge':
+        if key in ('purge', 'delNS'):
             if value is True:
                 value = 'true'
             else:
