@@ -1,8 +1,13 @@
 # WARNING: All commands connect to `tidb` container of tidb pods by default.
 # 	   As tidb pod has two containers
 OUTPUT_DIR=output
-CASE_POD_ID=$(argo get -n argo $DEPLOY_ID -o json | jq -r '.status.nodes[] | select(.type == "Pod" and .templateName != "notify") | .id')
-CLUSTER_NAMESPACE=$(argo get -n argo $DEPLOY_ID -o json | jq -r '.spec.templates[-1].container.command[2]' | grep -oP '\-namespace=".*?"' | grep -o '".*"' | sed -e 's/^"//' -e 's/"$//')
+CASE_POD_ID=$(argo get -n argo $DEPLOY_ID -o json \
+              | jq -r '.status.nodes[] | select(.type == "Pod" and .templateName != "notify") | .id')
+CLUSTER_NAMESPACE=$(argo get -n argo $DEPLOY_ID -o json \
+                    | jq -r '.spec.templates[-1].container.command[2]' \
+                    | grep -oP '\-namespace=".*?"' \
+                    | grep -o '".*"' \
+                    | sed -e 's/^"//' -e 's/"$//')
 
 echo "available commands:"
 echo "- t_log_case"
