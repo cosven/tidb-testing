@@ -37,10 +37,7 @@ class DebugToolBox:
             f.write(self.script())
 
     def script(self):
-        variables = inspect.cleandoc("""
-        DEPLOY_ID={}
-        """.format(self.deploy_id))
-
+        variables = f'DEPLOY_ID={self.deploy_id}'
         with open(pathlib.Path(__file__).parent.absolute() / './scripts/env_raw.sh', 'rt') as f:
             functions = ''.join(f.readlines())
         return variables + '\n' + functions

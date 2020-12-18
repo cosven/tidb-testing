@@ -2,7 +2,6 @@
 
 from setuptools import setup
 
-
 setup(
     name='tpctl',
     version='0.1.dev0',
@@ -13,7 +12,8 @@ setup(
         'tpctl',
     ],
     package_data={
-        '': ['data/*']
+        '': ['data/*'],
+        '': ['scripts/env_raw.sh']
     },
     python_requires=">=3.6",
     url='https://github.com/cosven/tidb-testing/casectl',
