@@ -30,12 +30,14 @@ COMMON_OPTIONS = (
 
     optgroup.group('Test case build options'),
     optgroup.option('--build-image/--no-build-image', default=False),
+    optgroup.option('--image', default="pingcap/tipocket"),
 
     optgroup.group('Test case deploy options'),
     optgroup.option('--cron/--not-cron', default=False),
     optgroup.option('--cron-schedule', default='30 17 * * *'),
 
     optgroup.group('Test case common options'),
+    optgroup.option('--round', default='1'),
     optgroup.option('--client', default='5'),
     optgroup.option('--run-time', default='10m'),
     optgroup.option('--nemesis', default=''),
@@ -185,4 +187,12 @@ def rawkv_linearizability(**params):
 def hello(**params):
     """
     For debugging of tpctl itself.
+    """
+
+@click.option('--warehouses', default='10')
+@testcase_common_options
+@testcase('tpcc', 'tpcc', ['yinshaowen'])
+def tpcc(**params):
+    """
+    tpcc
     """
