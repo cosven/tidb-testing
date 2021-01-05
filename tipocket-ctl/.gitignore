@@ -4,3 +4,6 @@ dist/
 tpctl.egg-info/
 \#*\#
 .\#*
+
+# tpctl generated files
+tpctl-*.yaml

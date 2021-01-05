@@ -1,0 +1,10 @@
+[gc]
+enable-compaction-filter = true
+compaction-filter-skip-version-check = true
+
+[pessimistic-txn]
+pipelined = true
+
+[rocksdb]
+auto-tuned = true
+
