@@ -1,66 +1,196 @@
+import base64
+import sys
+
 import click
 import yaml
+from click_option_group import optgroup
 
-from tpctl.argo import ArgoCase, ArgoCronCase
-from tpctl.case import Case, CaseInstance
-from tpctl.params import parse_params, get_tidb_cluster_spec_from_params
+from tpctl.case import BinaryCase, ArgoCase
+from tpctl.tidb_cluster import ComponentName, ComponentSpec, TidbClusterSpec
 
 
-class Deploy:
-    def __init__(self, env, feature, case, binary, image, params):
-        self._env = env
-        self.feature = feature
-        self.case = case
-        self.binary = binary
-        self.image = image
-        self.params = params
-        self._is_cron = params['cron'] is True
+# RESOURCES_DIR = 'tpctl-build/resources'
+COMPONENTS = ['tikv', 'tidb', 'pd']
 
-        if self._is_cron:
-            self.deploy_id = f'tpctl-{self.case.name}-{self.feature}-cron'
-            self._argo_workflow_filepath = \
-                f'{env.dir_root}/{case.name}-{feature}-cron.yaml'
+# Those options would be passed to tipocket case,
+# except those in params.IGNORE_OPTION_LIST.
+COMMON_OPTIONS = (
+    # NOTE: remember to update params.IGNORE_OPTION_LIST when
+    # a parameter is modified
+
+    optgroup.group('Test case deploy options'),
+    optgroup.option('--subscriber', multiple=True),
+    optgroup.option('--feature', default='universal'),
+    optgroup.option('--image', default="pingcap/tipocket"),
+    optgroup.option('--cron/--not-cron', default=False),
+    optgroup.option('--cron-schedule', default='30 17 * * *'),
+
+    optgroup.group('Test case common options'),
+    optgroup.option('--round', default='1'),
+    optgroup.option('--client', default='5'),
+    optgroup.option('--run-time', default='10m'),
+    optgroup.option('--nemesis', default=''),
+    optgroup.option('--purge/--no-purge', default=False),
+    optgroup.option('--delns/--no-delns', 'delNS', default=False),
+
+    optgroup.group('TiDB cluster options'),
+    optgroup.option('--namespace', default=''),
+    optgroup.option('--hub', default='docker.io'),
+    optgroup.option('--repository', default='pingcap'),
+    optgroup.option('--image-version', default='nightly'),
+    *[optgroup.option(f'--{component}-image', default='')
+      for component in COMPONENTS],
+    *[optgroup.option(f'--{component}-config', default='', type=click.Path())
+      for component in COMPONENTS],
+    optgroup.option('--tikv-replicas', default='5'),
+    optgroup.option('--tidb-replicas', default='1'),
+    optgroup.option('--pd-replicas', default='1'),
+
+    optgroup.group('K8s options',
+                   help='different K8s cluster has different values'),
+    optgroup.option('--storage-class', default='local-storage',
+                    show_default=True),
+
+    optgroup.group('Test case logging options',
+                   help='usually, you need not to change this'),
+    # set loki settings to empty since loki does not work well currently
+    optgroup.option('--loki-addr', default=''),  # http://gateway.loki.svc'
+    optgroup.option('--loki-username', default=''),  # loki
+    optgroup.option('--loki-password', default=''),  # admin
+)
+
+# Those options won't be passed to tipocket case.
+IGNORE_OPTION_LIST = [
+    'image',
+    'subscriber',
+    'feature',
+    'cron',
+    'cron_schedule',
+    # 'cron_concurrency_policy',
+    # 'cron_starting_deadline_seconds',
+    # 'cron_timezone'
+]
+
+
+def testcase_common_options(func):
+    for option in reversed(COMMON_OPTIONS):
+        func = option(func)
+    return func
+
+
+def get_case_params(params):
+    """
+    validate params and generate params for test case
+    """
+    # convert parameters to the format that tipocket test case recognize
+    case_params = {}
+    for key, value in params.items():
+        if key in IGNORE_OPTION_LIST:
+            continue
+        # convert True/False to 'true/false'
+        if key in ('purge', 'delNS'):
+            if value is True:
+                value = 'true'
+            else:
+                value = 'false'
+        if key.endswith('_config'):
+            # value should be a valid config file path
+            # TODO: catch FileNotExist error or validate the path somewhere
+            if value:
+                # read the content in config file and encode it with base64
+                # https://github.com/pingcap/tipocket/pull/330
+                with open(value) as f:
+                    content = f.read()
+                content_bytes = bytes(content, 'utf-8')
+                b64content = base64.b64encode(content_bytes).decode('utf-8')
+                value = f'base64://{b64content}'
+        case_params[key.replace('_', '-')] = value
+    return case_params
+
+
+def get_tidb_cluster_spec_from_params(params):
+    hub = params['hub']
+    repository = params['repository']
+    tag = params['image_version']
+
+    components = []
+    component_names = ComponentName.list_names()
+    for component in component_names:
+        config_path = params[f'{component}_config']
+        # FIXME: the program must run in tipocket root directory
+        if config_path:
+            with open(config_path) as f:
+                config = f.read()
         else:
-            self.deploy_id = f'tpctl-{self.case.name}-{self.feature}'
-            self._argo_workflow_filepath = \
-                f'{env.dir_root}/{case.name}-{feature}.yaml'
+            config = ''
+        replicas = params[f'{component}_replicas']
+        image = params[f'{component}_image']
+        if not image:
+            image = f'{hub}/{repository}/{component}:{tag}'
+        component = ComponentSpec(component, image, replicas, config)
+        components.append(component)
+    return TidbClusterSpec.create_from_components(components)
 
-    def prepare(self):
-        argo_case = self.generate_case()
-        argo_workflow_filepath = self._argo_workflow_filepath
-        click.echo(f'Generating argo workflow {argo_workflow_filepath}...')
-        with open(argo_workflow_filepath, 'w') as f:
-            workflow_dict = argo_case.gen_workflow()
-            yaml.dump(workflow_dict, f)
 
-    def generate_case(self):
-        case_params = parse_params(self.params)
-        case_inst = CaseInstance(self.case, self.binary, case_params)
-        tidb_cluster = get_tidb_cluster_spec_from_params(self.params)
-        subscribers = self.params['subscriber'] or None
-        if self._is_cron:
-            argo_case = ArgoCronCase(self.feature, case_inst, self.image, tidb_cluster,
-                                     deploy_id=self.deploy_id, notify=True, notify_users=subscribers,
-                                     cron_params={
-                                         'schedule': self.params['cron_schedule'],
-                                         'concurrencyPolicy': 'Forbid',
-                                         'startingDeadlineSeconds': 0,
-                                         'timezone': 'Asia/Shanghai',
-                                     })
-        else:
-            argo_case = ArgoCase(self.feature, case_inst, self.image, tidb_cluster,
-                                 deploy_id=self.deploy_id, notify=True, notify_users=subscribers)
-        namespace = case_params['namespace']
-        if not namespace:
-            case_params['namespace'] = self.deploy_id
-        return argo_case
+@click.command()
+@click.argument('--', nargs=-1, type=click.UNPROCESSED)
+@testcase_common_options
+def deploy(**params):
+    case_cmd_args = params.pop('__')
+    assert case_cmd_args and case_cmd_args[0].startswith('bin/')
 
-    def get_howto_cmds(self):
-        if self._is_cron:
-            return [
-                f'argo cron create {self._argo_workflow_filepath}'
-            ]
-        else:
-            return [
-                f'argo submit {self._argo_workflow_filepath}'
-            ]
+    # generate deploy id
+    case_name = case_cmd_args[0].split('/')[1]
+    is_cron = params['cron'] is True
+    feature = params['feature']
+    deploy_id = f'tpctl-{case_name}-{feature}'
+    if is_cron:
+        deploy_id += '-cron'
+    click.echo(f'Case name is {click.style(case_name, fg="blue")}')
+    # generate case
+    case_params = get_case_params(params)
+    # set namespace to deploy_id by default
+    if not case_params['namespace']:
+        case_params['namespace'] = deploy_id
+    for arg in case_cmd_args:
+        if arg.startswith('-'):
+            option_name = arg.split('=')[0][1:]
+            if option_name not in case_params:
+                continue
+            click.secho(f"You should specify option '{option_name}' before --",
+                        fg='red')
+            sys.exit(1)
+    case_cmd = ' '.join(case_cmd_args)
+    case_cmd = f'/{case_cmd}'
+    for key, value in case_params.items():
+        case_cmd += f' -{key}="{value}"'
+    case = BinaryCase(case_name, case_cmd)
+    click.echo('Generating command for running case...')
+    click.secho(case_cmd, fg='blue')
+
+    # generate argo workflow yaml
+    argo_workflow_filepath = f'{deploy_id}.yaml'
+    image = params['image']
+    tidb_cluster = get_tidb_cluster_spec_from_params(params)
+    subscribers = params['subscriber'] or None
+    argo_case = ArgoCase(deploy_id, case, image,
+                         tidb_cluster, notify_users=subscribers)
+    if is_cron:
+        argo_case = argo_case.to_cron({
+            'schedule': params['cron_schedule'],
+            'concurrencyPolicy': 'Forbid',
+            'startingDeadlineSeconds': 0,
+            'timezone': 'Asia/Shanghai',
+        })
+    click.echo(f'Generating argo workflow {argo_workflow_filepath}...')
+    with open(argo_workflow_filepath, 'w') as f:
+        workflow_dict = argo_case.gen_workflow()
+        yaml.dump(workflow_dict, f)
+
+    # show hints
+    if is_cron:
+        deploy_cmd = f'argo cron create {argo_workflow_filepath}'
+    else:
+        deploy_cmd = f'argo submit {argo_workflow_filepath}'
+    click.echo('Run following commands to deploy the case')
+    click.secho(deploy_cmd, fg='green')
