@@ -133,9 +133,22 @@ def get_tidb_cluster_spec_from_params(params):
 
 
 @click.command()
-@click.argument('--', nargs=-1, type=click.UNPROCESSED)
+@click.argument('--', nargs=-1, required=True, type=click.UNPROCESSED)
 @testcase_common_options
 def deploy(**params):
+    """Deploy(debug/run) tipocket case on K8s
+
+    \b
+    Several usage examples:
+    * tpctl deploy --subscriber '@slack_id' -- bin/bank2
+    * tpctl deploy --image='myhub.io/tom/tipocket:case' --subscriber '@slack_id' -- bin/case -xxx
+    * tpctl deploy --image='{your_tipocket_image}' --subscriber '@slack_id' -- bin/case -xxx
+    * tpctl deploy --run-time='5m' --subscriber '@slack_id' -- bin/resolve-lock -enable-green-gc=false
+
+    Note: case specific options(like `enable-green-gc`) should be followed
+    by `--`, and the common options (like `run-time`) should be specified in
+    command options.
+    """
     case_cmd_args = params.pop('__')
     assert case_cmd_args and case_cmd_args[0].startswith('bin/')
 
