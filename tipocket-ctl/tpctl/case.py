@@ -142,7 +142,7 @@ class ArgoCase:
     def _get_case_template_name(self):
         return self.case.name
 
-    def to_cron(self, cron_params):
+    def gen_cron_workflow(self, cron_params):
         workflow = self.gen_workflow()
         # use fixed name for cron workflow
         metadata = workflow['metadata']

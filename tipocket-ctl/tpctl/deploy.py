@@ -29,9 +29,11 @@ COMMON_OPTIONS = (
     optgroup.option('--round', default='1'),
     optgroup.option('--client', default='5'),
     optgroup.option('--run-time', default='10m'),
+    optgroup.option('--wait-duration', default='10m'),
     optgroup.option('--nemesis', default=''),
     optgroup.option('--purge/--no-purge', default=False),
     optgroup.option('--delns/--no-delns', 'delNS', default=False),
+
 
     optgroup.group('TiDB cluster options'),
     optgroup.option('--namespace', default=''),
@@ -182,22 +184,23 @@ def deploy(**params):
     click.secho(case_cmd, fg='blue')
 
     # generate argo workflow yaml
-    argo_workflow_filepath = f'{deploy_id}.yaml'
+    argo_workflow_filepath = f'/tmp/{deploy_id}.yaml'
     image = params['image']
     tidb_cluster = get_tidb_cluster_spec_from_params(params)
     subscribers = params['subscriber'] or None
     argo_case = ArgoCase(deploy_id, case, image,
                          tidb_cluster, notify_users=subscribers)
-    if is_cron:
-        argo_case = argo_case.to_cron({
-            'schedule': params['cron_schedule'],
-            'concurrencyPolicy': 'Forbid',
-            'startingDeadlineSeconds': 0,
-            'timezone': 'Asia/Shanghai',
-        })
-    click.echo(f'Generating argo workflow {argo_workflow_filepath}...')
+    click.echo(f'Generating argo workflow {click.style(argo_workflow_filepath, fg="blue")}...')
     with open(argo_workflow_filepath, 'w') as f:
-        workflow_dict = argo_case.gen_workflow()
+        if is_cron:
+            workflow_dict = argo_case.gen_cron_workflow({
+                'schedule': params['cron_schedule'],
+                'concurrencyPolicy': 'Forbid',
+                'startingDeadlineSeconds': 0,
+                'timezone': 'Asia/Shanghai',
+            })
+        else:
+            workflow_dict = argo_case.gen_workflow()
         yaml.dump(workflow_dict, f)
 
     # show hints
