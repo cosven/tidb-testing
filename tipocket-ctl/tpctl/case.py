@@ -1,4 +1,5 @@
 import base64
+import json
 
 from tpctl.yaml_dump_tidbcluster import dump
 
@@ -11,17 +12,17 @@ class BinaryCase:
 
 class ArgoCase:
     def __init__(self, name, case, image,
-                 tidb_cluster, notify_users=None):
+                 tidb_cluster, description='', notify_users=None):
         self.name = name
 
         # case metadata and build info
         self.case = case
         self.image = image
 
+        # notification
         # resources info
         self.tidb_cluster = tidb_cluster
-
-        # notification
+        self.description = description
         self.notify_users = notify_users or []
 
     def gen_workflow(self):
@@ -33,9 +34,9 @@ class ArgoCase:
             main_steps.append([notify_step])
 
             notify_failed_step = self.gen_notify_step(
-                'notify-end-failed', 'end', 'failed', r'{{workflow.status}} != Succeeded')
+                'notify-end-failed', 'failed', r'{{workflow.status}} != Succeeded')
             notify_passed_step = self.gen_notify_step(
-                'notify-end-passed', 'end', 'passed', r'{{workflow.status}} == Succeeded')
+                'notify-end-passed', 'passed', r'{{workflow.status}} == Succeeded')
             on_exit_steps.append([notify_failed_step, notify_passed_step])
         else:
             users = []
@@ -65,13 +66,12 @@ class ArgoCase:
         }
         return step
 
-    def gen_notify_step(self, name, stage, status='passed', when=None):
+    def gen_notify_step(self, name, status='passed', when=None):
         step = {
             'name': f'{name}',
             'template': 'notify',
             'arguments': {
                 'parameters': [
-                    {'name': 'stage', 'value': stage},
                     {'name': 'status', 'value': status},
                 ]
             },
@@ -84,31 +84,36 @@ class ArgoCase:
         def encode(s):
             return base64.b64encode(bytes(s, 'utf-8')).decode('utf-8')
 
-        encoded_cmd = encode(self.case.cmd)
-        encoded_tidbcluster = encode(dump(self.tidb_cluster.to_json()))
+        kvs = {
+            'cmd': self.case.cmd,
+            'tidb-cluster': dump(self.tidb_cluster.to_json()),
+            'help': ('Want to know how to debug a tipocket case?\n'
+                     'Please Check '
+                     'https://docs.google.com/document/d/12YifSDvjKAh12P70Ch7jVCbi3zStEHA6mJp0gbGARyo/edit .')
+        }
+        if self.description:
+            kvs['description'] = self.description
+
+        b64encodedkvs = encode(json.dumps(kvs))
         return {
             'name': 'notify',
             'inputs': {
                 'parameters': [
-                    {'name': 'stage'},
                     {'name': 'status', 'default': 'passed'},
                 ]
             },
             'container': {
                 'name': 'notify-py',
-                'image': 'hub.pingcap.net/tpctl/notify',
+                'image': 'hub.pingcap.net/tpctl/notify:2021-01-05',
                 'imagePullpolicy': 'Always',
                 'args': [
                     ','.join(users),
                     self.case.name,
-                    r'{{workflow.name}}',
-                    r'{{inputs.parameters.stage}}',
-                    '--status',
                     r'{{inputs.parameters.status}}',
-                    '--cmd',
-                    f'{encoded_cmd}',
-                    '--tidbcluster',
-                    f'{encoded_tidbcluster}',
+                    '--kv',
+                    r'argo-workflow-id={{workflow.name}}',
+                    '--b64encodedkvs',
+                    b64encodedkvs
                 ],
                 'env': [
                     {

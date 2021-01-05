@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
+import logging
 import os
-import sys
+import json
 from base64 import b64decode
 from datetime import datetime
 from enum import Enum
@@ -11,12 +12,9 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 
-class Stage(Enum):
-    running = 'running'
-    end = 'end'
-
-
 class Status(Enum):
+    running = 'running'
+
     passed = 'passed'
     failed = 'failed'
 
@@ -28,46 +26,54 @@ def decode(s):
 @click.command()
 @click.argument('channel')
 @click.argument('case')
-@click.argument('workflow')
-@click.argument('stage')
-@click.option('--status', default='passed')
-@click.option('--cmd', default='')
-@click.option('--tidbcluster', default='')
-def send_message(channel, case, workflow, stage, status, cmd, tidbcluster):
-    stage = Stage(stage)
+@click.argument('status')
+@click.option('--kv', multiple=True)  # simple kv
+@click.option('--b64encodedkvs', default='')  # complex kv
+def send_message(channel, case, status, kv, b64encodedkvs):
     status = Status(status)
-
     client = WebClient(token=os.getenv('SLACK_BOT_TOKEN'))
     fields = []
+    fields.append(('status', f'{status.value}'))
     fields.append(('time', f'{datetime.now()}'))
-    fields.append(('argo workflow', f'{workflow}'))
-    fields.append(('stage', f'{stage.value}'))
-    fields.append(('cmd', decode(cmd)))
-    fields.append(('tidb cluster', decode(tidbcluster)))
-    if stage is Stage.end and status is Status.failed:
-        color = 'danger'
+
+    if status is Status.running:
+        color = '#268bd2'  # blue, copied from solorized theme
+        title = f"Test case `{case}` {status.value} 🙏"
     else:
-        color = 'good'
-    if stage is Stage.end:
-        fields.append(('status', f'{status.value}'))
-        title = f"Tipocket test case `{case}` {stage.value} --- {status.value}"
-    else:
-        title = f"Tipocket test case `{case}` {stage.value} 🙏"
+        if status is Status.failed:
+            color = 'danger'
+        else:
+            color = 'good'
+        title = f"Test case `{case}` {status.value} --- {status.value}"
+
+    if kv:
+        for each in kv:
+            key, value = each.split('=')
+            fields.append((key, value))
+
+    kv_pairs_str = b64decode(b64encodedkvs).decode('utf-8') or '{}'
+    kv_pairs = json.loads(kv_pairs_str)
+    for key, value in kv_pairs.items():
+        fields.append((key, value))
 
     channels = channel.split(',')
-    for channel in channels:
-        client.chat_postMessage(
-            channel=channel,
-            attachments=[
-                {
-                    "mrkdwn_in": ["text", "title"],
-                    "color": color,
-                    "title": title,
-                    "text": f"",
-                    "fields": [{'title': name, 'value': value, 'short': False}
-                               for name, value in fields],
-                }
-            ])
+    for channel_ in channels:
+        try:
+            client.chat_postMessage(
+                channel=channel_,
+                attachments=[{
+                        "mrkdwn_in": ["text", "title"],
+                        "color": color,
+                        "title": title,
+                        "text": "",
+                        "fields": [{'title': name,
+                                    'value': value,
+                                    'short': name in ('status', 'time')}
+                                   for name, value in fields],
+                    }]
+            )
+        except:  # noqa
+            logging.exception('send message failed')
 
 
 if __name__ == '__main__':

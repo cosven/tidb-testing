@@ -12,16 +12,26 @@ from tpctl.tidb_cluster import ComponentName, ComponentSpec, TidbClusterSpec
 # RESOURCES_DIR = 'tpctl-build/resources'
 COMPONENTS = ['tikv', 'tidb', 'pd']
 
-# Those options would be passed to tipocket case,
-# except those in params.IGNORE_OPTION_LIST.
-COMMON_OPTIONS = (
-    # NOTE: remember to update params.IGNORE_OPTION_LIST when
-    # a parameter is modified
+# Those options won't be passed to tipocket case.
+IGNORE_OPTION_LIST = [
+    'image',
+    'subscriber',
+    'feature',
+    'cron',
+    'cron_schedule',
+    'description',
+]
 
+# Those options would be passed to tipocket case,
+# except those in IGNORE_OPTION_LIST.
+COMMON_OPTIONS = (
+    # !!! remember to update params.IGNORE_OPTION_LIST when
+    # a parameter is modified
     optgroup.group('Test case deploy options'),
     optgroup.option('--subscriber', multiple=True),
     optgroup.option('--feature', default='universal'),
     optgroup.option('--image', default="pingcap/tipocket"),
+    optgroup.option('--description', default=''),
     optgroup.option('--cron/--not-cron', default=False),
     optgroup.option('--cron-schedule', default='30 17 * * *'),
 
@@ -31,8 +41,8 @@ COMMON_OPTIONS = (
     optgroup.option('--run-time', default='10m'),
     optgroup.option('--wait-duration', default='10m'),
     optgroup.option('--nemesis', default=''),
-    optgroup.option('--purge/--no-purge', default=False),
-    optgroup.option('--delns/--no-delns', 'delNS', default=False),
+    optgroup.option('--purge/--no-purge', default=True),
+    optgroup.option('--delns/--no-delns', 'delNS', default=True),
 
 
     optgroup.group('TiDB cluster options'),
@@ -60,18 +70,6 @@ COMMON_OPTIONS = (
     optgroup.option('--loki-username', default=''),  # loki
     optgroup.option('--loki-password', default=''),  # admin
 )
-
-# Those options won't be passed to tipocket case.
-IGNORE_OPTION_LIST = [
-    'image',
-    'subscriber',
-    'feature',
-    'cron',
-    'cron_schedule',
-    # 'cron_concurrency_policy',
-    # 'cron_starting_deadline_seconds',
-    # 'cron_timezone'
-]
 
 
 def testcase_common_options(func):
@@ -189,7 +187,9 @@ def deploy(**params):
     tidb_cluster = get_tidb_cluster_spec_from_params(params)
     subscribers = params['subscriber'] or None
     argo_case = ArgoCase(deploy_id, case, image,
-                         tidb_cluster, notify_users=subscribers)
+                         tidb_cluster,
+                         description=params['description'],
+                         notify_users=subscribers)
     click.echo(f'Generating argo workflow {click.style(argo_workflow_filepath, fg="blue")}...')
     with open(argo_workflow_filepath, 'w') as f:
         if is_cron:
