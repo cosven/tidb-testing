@@ -84,12 +84,15 @@ class ArgoCase:
         def encode(s):
             return base64.b64encode(bytes(s, 'utf-8')).decode('utf-8')
 
+        help_msg = (
+            'Want to know how to debug a tipocket case?\n'
+            'Please Check '
+            'https://docs.google.com/document/d/12YifSDvjKAh12P70Ch7jVCbi3zStEHA6mJp0gbGARyo/edit .'
+        )
         kvs = {
             'cmd': self.case.cmd,
             'tidb-cluster': dump(self.tidb_cluster.to_json()),
-            'help': ('Want to know how to debug a tipocket case?\n'
-                     'Please Check '
-                     'https://docs.google.com/document/d/12YifSDvjKAh12P70Ch7jVCbi3zStEHA6mJp0gbGARyo/edit .')
+            'help': help_msg
         }
         if self.description:
             kvs['description'] = self.description
