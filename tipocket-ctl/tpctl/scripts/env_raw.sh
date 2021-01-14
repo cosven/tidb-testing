@@ -22,7 +22,7 @@ function t_get_grafana_addr {
 	if [ "$grafana_port" == "" ]; then
 		echo "Grafana is not ready yet, please run t_get_grafana_addr later."
 	else
-		echo "Grafana is on $host_ip:$grafana_port, username and password are both admin."
+		echo "Grafana is on http://$host_ip:$grafana_port, username and password are both admin."
 	fi
 }
 
