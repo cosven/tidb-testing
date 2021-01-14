@@ -10,7 +10,7 @@ CLUSTER_NAMESPACE=$(argo get -n argo $DEPLOY_ID -o json \
                     | sed -e 's/^"//' -e 's/"$//')
 
 function get_grafana_port {
-	grafana_port=$(kubectl -n $CLUSTER_NAMESPACE get svc -o json \
+	echo $(kubectl -n $CLUSTER_NAMESPACE get svc -o json \
 		       | jq -r '.items[].spec.ports[]
 			        | select(.name == "http-grafana")
 				| .nodePort')
