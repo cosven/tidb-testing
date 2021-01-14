@@ -9,13 +9,33 @@ CLUSTER_NAMESPACE=$(argo get -n argo $DEPLOY_ID -o json \
                     | grep -o '".*"' \
                     | sed -e 's/^"//' -e 's/"$//')
 
+function get_grafana_port {
+	grafana_port=$(kubectl -n $CLUSTER_NAMESPACE get svc -o json \
+		       | jq -r '.items[].spec.ports[]
+			        | select(.name == "http-grafana")
+				| .nodePort')
+}
+
+function t_get_grafana_addr {
+	grafana_port=$(get_grafana_port)
+	host_ip=$(hostname)
+	if [ "$grafana_port" == "" ]; then
+		echo "Grafana is not ready yet, please run t_get_grafana_addr later."
+	else
+		echo "Grafana is on $host_ip:$grafana_port, username and password are both admin."
+	fi
+}
+
 echo "available commands:"
 echo "- t_log_case"
 echo "- t_ls_pod"
 echo "- t_log_pod {pod-name}"
 echo "- t_ssh_pod {pod-name}"
+echo "- t_get_grafana_addr"
 echo ""
 echo "logs are stored in ./$OUTPUT_DIR/"
+t_get_grafana_addr # Print grafana port.
+
 
 mkdir -p $OUTPUT_DIR
 
