@@ -1,0 +1,14 @@
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: test-workload-49
+spec:
+  serviceAccountName: system-testing
+  taskRef:
+    name: systesting-workload
+  workspaces:
+    - name: manifest
+      emptyDir: {}
+  params:
+    - name: run-id
+      value: systesting-demo

@@ -1,0 +1,42 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system-testing
+rules:
+- apiGroups: ["extensions", "apps", "", "batch", "naglfar.pingcap.com"]
+  resources:
+  - pods
+  - pods/status
+  - pods/log
+  - services
+  - services/status
+  - endpoints
+  - endpoints/status
+  - deployments
+  - configmaps
+  - jobs
+  - testworkloads
+  - testresourcerequests
+  - testclustertopologies
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system-testing
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system-testing
+subjects:
+- kind: ServiceAccount
+  name: system-testing
+  namespace: cosven
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: system-testing

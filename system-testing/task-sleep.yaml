@@ -1,0 +1,17 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: systesting-sleep
+spec:
+  params:
+    - name: duration
+      type: string
+      default: "300"
+  steps:
+    - name: sleep-5m
+      image: hub.pingcap.net/qa/kubetools:20200730
+      script: |
+        #!/usr/bin/env bash
+        echo "start sleep for $(params.duration)..."
+        sleep $(params.duration)
+        echo "sleep...done"
