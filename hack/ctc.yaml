@@ -9,17 +9,16 @@ spec:
   pvReclaimPolicy: Delete
   timezone: UTC
   pd:
-    image: pingcap/pd:release-4.0-nightly
+    image: pingcap/pd:nightly
     replicas: 3
     limits:
       cpu: "8"
       memory: "8Gi"
     requests:
       storage: 10Gi
-    storageClassName: local-storage
     config: {}
   tidb:
-    image: pingcap/tidb:release-4.0-nightly
+    image: pingcap/tidb:nightly
     replicas: 1
     service:
       type: NodePort
@@ -28,7 +27,7 @@ spec:
       memory: "16Gi"
     config: {}
   tiflash:
-    image: pingcap/tiflash:v4.0.2
+    image: pingcap/tiflash:nightly
     replicas: 1
     storageClaims:
     - resources:
@@ -37,9 +36,8 @@ spec:
         limits:
           cpu: "3"
           memory: "8Gi"
-      storageClassName: local-storage
   tikv:
-    image: pingcap/tikv:release-4.0-nightly
+    image: pingcap/tikv:nightly
     config:
       log-level: info
       coprocessor:
@@ -55,7 +53,6 @@ spec:
     limits:
       cpu: "16"
       memory: "32Gi"
-    storageClassName: local-storage
 
 ---
 
