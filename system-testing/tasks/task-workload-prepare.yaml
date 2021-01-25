@@ -38,17 +38,18 @@ spec:
                 - |
                   set -x
                   tidbHost=\`echo \$cluster_tidb0 | awk -F ":" '{print \$1}'\`
-                  isTpccExist=\`mysql -uroot -P4000 -h "\$tidbHost" -e "use tpcc;" && echo "yes" || echo "no"\`
+                  isTpccExist=\`mysql -uroot -P4000 -h "\$tidbHost" -e "use tpcc;" > /dev/null && echo "yes" || echo "no"\`
                   if [ "\$isTpccExist" == "no" ]; then
                     mysql -uroot -P4000 -h "\$tidbHost" -e "create database tpcc;"
-                    /go-tpc -H \$tidbHost -P4000 -D tpcc tpcc run --warehouses 10
+                    # go-tpc -H \$tidbHost -P4000 -D tpcc tpcc prepare --warehouses 10
+                    sql="restore database * from 's3://benchmark/tpcc-10-nightly/?endpoint=http://minio.pingcap.net:9000&access-key=minioadmin&secret-access-key=minioadmin&force-path-style=true';"
+                    echo "\`date\` restore..."
+                    mysql -uroot -h \$tidbHost -P4000 -e "\$sql"
+                    echo "\`date\` restore...done"
                   else
                     echo "database tpcc already exists"
                   fi
-                  # sql="restore database * from 's3://benchmark/tpcc-1000-new/?endpoint=http://minio.pingcap.net:9000&access-key=minioadmin&secret-access-key=minioadmin&force-path-style=true';"
-                  # echo "\`date\` restore..."
-                  # mysql -uroot -h \$tidbHost -P4000 -e "\$sql"
-                  # echo "\`date\` restore...done"
+
       EOF
       echo "generating worload manifest...done"
       cat "$(workspaces.manifest.path)/restore.yaml"
@@ -56,10 +57,20 @@ spec:
     image: hub.pingcap.net/qa/kubetools:20200730
     script: |
       #!/usr/bin/env bash
+      set -xe
+      twName="$(params.run-id)"
+      echo "ensure test-workload($twName) does not exists"
+      exists=`kubectl get tw $twName >/dev/null && echo "yes" || echo "no"`
+      if [ "$exists" == "yes" ]; then
+        echo "test workload($twName) already exists, delete it."
+        kubectl delete tw $twName
+      fi
+
+      echo "create test-workload($twName)..."
       kubectl apply -f "$(workspaces.manifest.path)/restore.yaml"
       while true
       do
-        state=`kubectl get tw "$(params.run-id)" -ojsonpath='{.status.state}' || echo pending`
+        state=`kubectl get tw "$twName" -ojsonpath='{.status.state}' || echo pending`
         echo "current workload state: $state"
         if [ "succeeded" == "$state" ]; then
           break
@@ -72,4 +83,5 @@ spec:
         sleep 5
       done
       curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/PingCAP-QE/Naglfar/master/scripts/kubectl-naglfar-installer.sh | sh
-      /root/.Naglfar/bin/naglfar logs $(params.run-id) -n $(context.taskRun.namespace) --follow
+      ~/.Naglfar/bin/naglfar logs $twName -n $(context.taskRun.namespace) --follow
+      kubectl delete tw $twName

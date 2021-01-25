@@ -16,9 +16,15 @@ rules:
   - deployments
   - configmaps
   - jobs
+
+  # naglfar
   - testworkloads
   - testresourcerequests
   - testclustertopologies
+  - testresources
+  - machines
+  - relationships
+  - testworkflows
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
 ---
