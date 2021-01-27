@@ -1,0 +1,16 @@
+[server]
+background-thread-count = 2
+
+[rocksdb.defaultcf]
+write-buffer-size = "128KB"
+max-bytes-for-level-base = "128KB"
+target-file-size-base = "8KB"
+compaction-guard-min-output-file-size = "8KB"
+compaction-guard-max-output-file-size = "128KB"
+
+[rocksdb.writecf]
+write-buffer-size = "128KB"
+max-bytes-for-level-base = "128KB"
+target-file-size-base = "8KB"
+compaction-guard-min-output-file-size = "8KB"
+compaction-guard-max-output-file-size = "128KB"
