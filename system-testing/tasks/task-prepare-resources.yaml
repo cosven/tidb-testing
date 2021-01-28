@@ -38,7 +38,7 @@ spec:
               disks:
                 disk1:
                   kind: nvme
-                  size: 200GB
+                  size: 3TB
                   mountPath: /disks1
           - name: kv2
             spec:
@@ -47,7 +47,7 @@ spec:
               disks:
                 disk1:
                   kind: nvme
-                  size: 200GB
+                  size: 3TB
                   mountPath: /disks1
           - name: kv3
             spec:
@@ -56,7 +56,7 @@ spec:
               disks:
                 disk1:
                   kind: nvme
-                  size: 200GB
+                  size: 3TB
                   mountPath: /disks1
           - name: kv4
             spec:
@@ -65,7 +65,7 @@ spec:
               disks:
                 disk1:
                   kind: nvme
-                  size: 200GB
+                  size: 3TB
                   mountPath: /disks1
           - name: kv5
             spec:
@@ -74,7 +74,7 @@ spec:
               disks:
                 disk1:
                   kind: nvme
-                  size: 200GB
+                  size: 3TB
                   mountPath: /disks1
           - name: pd
             spec:
