@@ -19,9 +19,9 @@ spec:
       apiVersion: naglfar.pingcap.com/v1
       kind: TestClusterTopology
       metadata:
-        name: systesting-demo-2
+        name: $(params.run-id)-ops
       spec:
-        resourceRequest: systesting-demo-2
+        resourceRequest: $(params.run-id)
         tidbCluster:
           global:
             deployDir: "/disks1/deploy"
