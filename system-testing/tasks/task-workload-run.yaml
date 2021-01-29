@@ -39,7 +39,7 @@ spec:
                 - |
                   set -x
                   tidbHost=\`echo \$cluster_tidb0 | awk -F ":" '{print \$1}'\`
-                  go-tpc -H \$tidbHost -P4000 -D tpcc tpcc run --time 60m
+                  go-tpc -H \$tidbHost -P4000 -D test tpcc run --time 300m
       EOF
       echo "generating workload-run manifest...done"
       cat "$file"

@@ -31,6 +31,15 @@ spec:
                   kind: nvme
                   size: 10GB
                   mountPath: /disks1
+          - name: pd
+            spec:
+              memory: 8GB
+              cores: 8
+              disks:
+                disk1:
+                  kind: nvme
+                  size: 200GB
+                  mountPath: /disks1
           - name: kv1
             spec:
               memory: 8GB
@@ -75,15 +84,6 @@ spec:
                 disk1:
                   kind: nvme
                   size: 3TB
-                  mountPath: /disks1
-          - name: pd
-            spec:
-              memory: 8GB
-              cores: 8
-              disks:
-                disk1:
-                  kind: nvme
-                  size: 20GB
                   mountPath: /disks1
           - name: ctl
             spec:
@@ -142,6 +142,7 @@ spec:
     image: hub.pingcap.net/qa/kubetools:20200730
     script: |
       #!/usr/bin/env bash
+      set -ex
       kubectl apply -f "$(workspaces.manifest.path)/resources.yaml"
       kubectl apply -f "$(workspaces.manifest.path)/cluster.yaml"
   - name: wait-until-cluster-started

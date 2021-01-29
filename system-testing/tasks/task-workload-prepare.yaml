@@ -6,6 +6,9 @@ spec:
   params:
     - name: run-id
       type: string
+    - name: tpcc-data-uri
+      type: string
+      default: "s3://benchmark/tpcc-10-nightly"
   workspaces:
   - name: manifest
     mountPath: /adhoc-manifests
@@ -31,20 +34,33 @@ spec:
                 name: "$(params.run-id)"
                 node: workload
               image: hub.pingcap.net/mahjonp/bench-toolset
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
               command:
                 - /bin/bash
                 - -c
                 - |
                   set -x
+                  export AWS_ACCESS_KEY_ID=minioadmin
+                  export AWS_SECRET_ACCESS_KEY=minioadmin
                   tidbHost=\`echo \$cluster_tidb0 | awk -F ":" '{print \$1}'\`
+                  pdHost=\`echo \$cluster_pd0 | awk -F ":" '{print \$1}'\`
                   isTpccExist=\`mysql -uroot -P4000 -h "\$tidbHost" -e "use tpcc;" > /dev/null && echo "yes" || echo "no"\`
                   if [ "\$isTpccExist" == "no" ]; then
-                    mysql -uroot -P4000 -h "\$tidbHost" -e "create database tpcc;"
-                    # go-tpc -H \$tidbHost -P4000 -D tpcc tpcc prepare --warehouses 10
-                    sql="restore database * from 's3://benchmark/tpcc-10-nightly/?endpoint=http://minio.pingcap.net:9000&access-key=minioadmin&secret-access-key=minioadmin&force-path-style=true';"
+                    # mysql -uroot -P4000 -h "\$tidbHost" -e "create database tpcc;"
                     echo "\`date\` restore..."
-                    mysql -uroot -h \$tidbHost -P4000 -e "\$sql"
+
+                    # go-tpc -H \$tidbHost -P4000 -D tpcc tpcc prepare --warehouses 10
+
+                    # sql="restore database * from '$(params.tpcc-data-uri)/?endpoint=http://minio.pingcap.net:9000&access-key=minioadmin&secret-access-key=minioadmin&force-path-style=true';"
+                    # mysql -uroot -h \$tidbHost -P4000 -e "\$sql"
+
+                    br -V
+                    br restore full --pd="\$pdHost:2379" --storage "$(params.tpcc-data-uri)/" \
+                       --s3.endpoint http://minio.pingcap.net:9000 --send-credentials-to-tikv=true
+
+                    ls /tmp/br.log*
+                    cat /tmp/br.log*
+
                     echo "\`date\` restore...done"
                   else
                     echo "database tpcc already exists"
