@@ -39,7 +39,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: system-testing
-  namespace: cosven
+  namespace: user-cosven
 
 ---
 apiVersion: v1

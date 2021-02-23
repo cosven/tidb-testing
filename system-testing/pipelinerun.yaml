@@ -11,5 +11,6 @@ spec:
       emptyDir: {}
   params:
     - name: run-id
+      # value: systesting-2tscale
       value: systesting-demo
-  timeout: "2h"
+  timeout: "6h"

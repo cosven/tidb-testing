@@ -1,0 +1,73 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: systesting
+spec:
+  params:
+    - name: run-id
+      type: string
+  workspaces:
+    - name: manifest
+  tasks:
+    - name: env-prepare
+      taskRef:
+        name: systesting-prepare-env
+      params:
+        - name: run-id
+          value: "$(params.run-id)"
+      workspaces:
+        - name: manifest
+          workspace: manifest
+    # - name: workload-prepare
+    #   taskRef:
+    #     name: systesting-workload-prepare
+    #   runAfter:
+    #     - env-prepare
+    #   params:
+    #     - name: run-id
+    #       value: "$(params.run-id)"
+    #     - name: tpcc-data-uri
+    #       value: "s3://tpcc/br-2t"
+    #       # value: "s3://benchmark/tpcc-10-nightly"
+    #   workspaces:
+    #     - name: manifest
+    #       workspace: manifest
+    - name: workload-run
+      taskRef:
+        name: systesting-workload-run
+      runAfter:
+        - env-prepare
+      params:
+        - name: run-id
+          value:
+          value: "$(params.run-id)"
+      workspaces:
+        - name: manifest
+          workspace: manifest
+    # - name: sleep-before-scale
+    #   runAfter:
+    #     - workload-prepare
+    #   taskRef:
+    #     name: systesting-sleep
+    #   params:
+    #     - name: duration
+    #       value: "1200"
+    # - name: scale-cluster
+    #   taskRef:
+    #     name: systesting-ops-resource
+    #   runAfter:
+    #     - sleep-before-scale
+    #   params:
+    #     - name: run-id
+    #       value: "$(params.run-id)"
+    #   workspaces:
+    #     - name: manifest
+    #       workspace: manifest
+    # - name: teardown
+    #   taskRef:
+    #     name: systesting-teardown
+    #   runAfter:
+    #     - workload-run
+    #   params:
+    #     - name: run-id
+    #       value: "$(params.run-id)"

@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: systesting-prepare-env
+  name: systesting-env-prepare
 spec:
   params:
     - name: run-id

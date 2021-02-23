@@ -11,4 +11,4 @@ spec:
       emptyDir: {}
   params:
     - name: run-id
-      value: systesting-demo
+      value: xxx
