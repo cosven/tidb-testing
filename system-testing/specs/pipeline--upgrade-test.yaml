@@ -1,0 +1,11 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: systesting--upgrade-test
+spec:
+  params:
+    - name: run-id
+      type: string
+      default: systesting--upgrade-test
+  workspaces:
+    - name: manifest

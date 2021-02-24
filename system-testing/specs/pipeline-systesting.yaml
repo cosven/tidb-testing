@@ -9,15 +9,15 @@ spec:
   workspaces:
     - name: manifest
   tasks:
-    - name: env-prepare
-      taskRef:
-        name: systesting-prepare-env
-      params:
-        - name: run-id
-          value: "$(params.run-id)"
-      workspaces:
-        - name: manifest
-          workspace: manifest
+    # - name: env-prepare
+    #   taskRef:
+    #     name: systesting-env-prepare
+    #   params:
+    #     - name: run-id
+    #       value: "$(params.run-id)"
+    #   workspaces:
+    #     - name: manifest
+    #       workspace: manifest
     # - name: workload-prepare
     #   taskRef:
     #     name: systesting-workload-prepare
@@ -35,8 +35,8 @@ spec:
     - name: workload-run
       taskRef:
         name: systesting-workload-run
-      runAfter:
-        - env-prepare
+      # runAfter:
+      #   - env-prepare
       params:
         - name: run-id
           value:

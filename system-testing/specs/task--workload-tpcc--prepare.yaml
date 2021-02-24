@@ -1,8 +1,9 @@
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: systesting-workload-prepare
+  name: st--workload-tpcc--prepare
 spec:
+
   params:
     - name: run-id
       type: string
@@ -12,6 +13,7 @@ spec:
   workspaces:
   - name: manifest
     mountPath: /adhoc-manifests
+
   steps:
   - name: generate-restore-manifest
     image: hub.pingcap.net/qa/kubetools:20200730
@@ -44,7 +46,7 @@ spec:
                   export AWS_SECRET_ACCESS_KEY=minioadmin
                   tidbHost=\`echo \$cluster_tidb0 | awk -F ":" '{print \$1}'\`
                   pdHost=\`echo \$cluster_pd0 | awk -F ":" '{print \$1}'\`
-                  isTpccExist=\`mysql -uroot -P4000 -h "\$tidbHost" -e "use tpcc;" > /dev/null && echo "yes" || echo "no"\`
+                  isTpccExist=\`mysql -uroot -P4000 -h "\$tidbHost" -e "use test; show tables;" | grep customer > /dev/null && echo "yes" || echo "no"\`
                   if [ "\$isTpccExist" == "no" ]; then
                     # mysql -uroot -P4000 -h "\$tidbHost" -e "create database tpcc;"
                     echo "\`date\` restore..."

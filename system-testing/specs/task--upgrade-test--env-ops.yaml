@@ -27,7 +27,7 @@ spec:
             deployDir: "/disks1/deploy"
             dataDir: "/disks1/data"
           version:
-            version: nightly
+            version: v5.0.0-rc
           control: ctl
           tikv:
             - host: kv1
@@ -35,13 +35,13 @@ spec:
             - host: kv3
             - host: kv4
           tidb:
-            - host: db
+            - host: db-pd-ctl
           pd:
-            - host: pd
+            - host: db-pd-ctl
           monitor:
-            - host: ctl
+            - host: db-pd-ctl
           grafana:
-            - host: ctl
+            - host: db-pd-ctl
               port: 9000
       EOF
   - name: apply-manifest

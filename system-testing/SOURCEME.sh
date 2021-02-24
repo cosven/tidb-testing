@@ -8,9 +8,12 @@ else
 
     unalias k
     unalias tkn
+    unalias naglfar
     alias k="kubectl -n $ns"
     alias tkn="tkn -n $ns"
+    alias naglfar="naglfar -n $ns"
 
-    echo "You now have two aliases: k=kubectl,tkn=tkn"
+    echo "You now have these aliases with -n option:"
+    echo -e "\t\e[36mk=kubectl,tkn=tkn,naglfar=naglfar\e[0m"
     echo -e "You can also try \e[34msource hack/bash_prompt.sh\e[0m"
 fi

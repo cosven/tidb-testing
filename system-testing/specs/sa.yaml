@@ -40,7 +40,15 @@ subjects:
 - kind: ServiceAccount
   name: system-testing
   namespace: user-cosven
-
+- kind: ServiceAccount
+  name: system-testing
+  namespace: user-lt
+- kind: ServiceAccount
+  name: system-testing
+  namespace: default
+- kind: ServiceAccount
+  name: system-testing
+  namespace: user-cosven-upgrade-test
 ---
 apiVersion: v1
 kind: ServiceAccount
