@@ -33,8 +33,8 @@ The command output looks like the following:
 ```
 Case name is resolve-lock
 Generating command for running case...
-/bin/resolve-lock -enable-green-gc=false -run-time="5m" -round="1" -client="5" -nemesis="" -purge="false" -delNS="false" -namespace="tpctl-resolve-lock-universal" -hub="docker.io" -repository="pingcap" -image-version="nightly" -tikv-image="" -tidb-image="" -pd-image="" -tikv-config="" -tidb-config="" -pd-config="" -tikv-replicas="5" -tidb-replicas="1" -pd-replicas="1" -storage-class="local-storage" -loki-addr="" -loki-username="" -loki-password=""
-Generating argo workflow tpctl-resolve-lock-universal.yaml...
+/bin/resolve-lock -enable-green-gc=false -run-time="5m" -round="1" -client="5" -wait-duration="10m" -nemesis="" -purge="true" -delNS="true" -namespace="tpctl-resolve-lock-universal" -hub="docker.io" -repository="pingcap" -image-version="nightly" -tikv-image="" -tidb-image="" -pd-image="" -tikv-config="" -tidb-config="" -pd-config="" -tikv-replicas="5" -tidb-replicas="1" -pd-replicas="1" -storage-class="local-storage"
+Generating argo workflow /tmp/tpctl-resolve-lock-universal.yaml...
 Run following commands to deploy the case
-argo submit tpctl-resolve-lock-universal.yaml
+argo submit /tmp/tpctl-resolve-lock-universal.yaml
 ```

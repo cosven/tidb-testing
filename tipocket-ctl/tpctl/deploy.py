@@ -65,10 +65,6 @@ COMMON_OPTIONS = (
 
     optgroup.group('Test case logging options',
                    help='usually, you need not to change this'),
-    # set loki settings to empty since loki does not work well currently
-    optgroup.option('--loki-addr', default=''),  # http://gateway.loki.svc'
-    optgroup.option('--loki-username', default=''),  # loki
-    optgroup.option('--loki-password', default=''),  # admin
 )
 
 
