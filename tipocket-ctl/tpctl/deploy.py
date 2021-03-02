@@ -1,4 +1,5 @@
 import base64
+import shlex
 import sys
 
 import click
@@ -30,12 +31,16 @@ COMMON_OPTIONS = (
     optgroup.group('Test case deploy options'),
     optgroup.option('--subscriber', multiple=True),
     optgroup.option('--feature', default='universal'),
-    optgroup.option('--image', default="pingcap/tipocket"),
+    optgroup.option('--image', default="hub.pingcap.net/qa/tipocket"),
     optgroup.option('--description', default=''),
     optgroup.option('--cron/--not-cron', default=False),
     optgroup.option('--cron-schedule', default='30 17 * * *'),
 
     optgroup.group('Test case common options'),
+    optgroup.option('--prepare-sql', default=''),
+    # HELP: We can add `failpoint.tidb` as option since click can't recognize
+    # the option name when there is a dot.
+    # optgroup.option('--failpoint.tidb', 'failpoint.tidb', default='',),
     optgroup.option('--round', default='1'),
     optgroup.option('--client', default='5'),
     optgroup.option('--run-time', default='10m'),
@@ -43,7 +48,6 @@ COMMON_OPTIONS = (
     optgroup.option('--nemesis', default=''),
     optgroup.option('--purge/--no-purge', default=True),
     optgroup.option('--delns/--no-delns', 'delNS', default=True),
-
 
     optgroup.group('TiDB cluster options'),
     optgroup.option('--namespace', default=''),
@@ -63,8 +67,8 @@ COMMON_OPTIONS = (
     optgroup.option('--storage-class', default='local-storage',
                     show_default=True),
 
-    optgroup.group('Test case logging options',
-                   help='usually, you need not to change this'),
+    # optgroup.group('Test case logging options',
+    #                help='usually, you need not to change this'),
     # set loki settings to empty since loki does not work well currently
     # optgroup.option('--loki-addr', default=''),  # http://gateway.loki.svc'
     # optgroup.option('--loki-username', default=''),  # loki
@@ -132,9 +136,9 @@ def get_tidb_cluster_spec_from_params(params):
     return TidbClusterSpec.create_from_components(components)
 
 
-@click.command()
-@click.argument('--', nargs=-1, required=True, type=click.UNPROCESSED)
+@click.command(context_settings=dict(ignore_unknown_options=True))
 @testcase_common_options
+@click.argument('--', nargs=-1, required=True, type=click.UNPROCESSED)
 def deploy(**params):
     """Deploy(debug/run) tipocket case on K8s
 
@@ -152,7 +156,7 @@ def deploy(**params):
     case_cmd_args = params.pop('__')
     assert case_cmd_args and case_cmd_args[0].startswith('bin/')
 
-    # generate deploy id
+    # Generate deploy id
     case_name = case_cmd_args[0].split('/')[1]
     is_cron = params['cron'] is True
     feature = params['feature']
@@ -160,11 +164,12 @@ def deploy(**params):
     if is_cron:
         deploy_id += '-cron'
     click.echo(f'Case name is {click.style(case_name, fg="blue")}')
-    # generate case
+    # Generate case
     case_params = get_case_params(params)
-    # set namespace to deploy_id by default
+    # Set namespace to deploy_id by default
     if not case_params['namespace']:
         case_params['namespace'] = deploy_id
+    # Check case options
     for arg in case_cmd_args:
         if arg.startswith('-'):
             option_name = arg.split('=')[0][1:]
@@ -173,7 +178,9 @@ def deploy(**params):
             click.secho(f"You should specify option '{option_name}' before --",
                         fg='red')
             sys.exit(1)
-    case_cmd = ' '.join(case_cmd_args)
+    # Input: tpctl deploy -- bin/cdc-bank -failpoint.tidb="set a=1"
+    # Output: /bin/cdc-bank '-failpoint.tidb=set a=1' ...
+    case_cmd = ' '.join(shlex.quote(arg) for arg in case_cmd_args)
     case_cmd = f'/{case_cmd}'
     for key, value in case_params.items():
         case_cmd += f' -{key}="{value}"'
