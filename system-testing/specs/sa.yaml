@@ -49,6 +49,9 @@ subjects:
 - kind: ServiceAccount
   name: system-testing
   namespace: user-cosven-upgrade-test
+- kind: ServiceAccount
+  name: system-testing
+  namespace: user-cosven-tpcc-prepare-30k
 ---
 apiVersion: v1
 kind: ServiceAccount
