@@ -3,13 +3,21 @@ kind: Task
 metadata:
   name: st--workload-tpcc--prepare
 spec:
-
   params:
-    - name: run-id
+    - name: workload-name
       type: string
-    - name: tpcc-data-uri
+
+    # dependencies
+    - name: trr-name
       type: string
-      default: "s3://benchmark/tpcc-10-nightly"
+    - name: tct-name
+      type: string
+
+    # tpcc parameters
+    - name: threads
+      type: string
+    - name: warehouses
+      type: string
   workspaces:
   - name: manifest
     mountPath: /adhoc-manifests
@@ -24,16 +32,16 @@ spec:
       apiVersion: naglfar.pingcap.com/v1
       kind: TestWorkload
       metadata:
-        name: "$(params.run-id)"
+        name: "$(params.workload-name)"
       spec:
         clusterTopologies:
-          - name: "$(params.run-id)"
+          - name: "$(params.tct-name)"
             aliasName: cluster
         workloads:
-          - name: "$(params.run-id)"
+          - name: "$(params.workload-name)"
             dockerContainer:
               resourceRequest:
-                name: "$(params.run-id)"
+                name: "$(params.trr-name)"
                 node: workload
               image: hub.pingcap.net/mahjonp/bench-toolset
               imagePullPolicy: Always
@@ -42,32 +50,17 @@ spec:
                 - -c
                 - |
                   set -x
-                  export AWS_ACCESS_KEY_ID=minioadmin
-                  export AWS_SECRET_ACCESS_KEY=minioadmin
-                  tidbHost=\`echo \$cluster_tidb0 | awk -F ":" '{print \$1}'\`
-                  pdHost=\`echo \$cluster_pd0 | awk -F ":" '{print \$1}'\`
-                  isTpccExist=\`mysql -uroot -P4000 -h "\$tidbHost" -e "use test; show tables;" | grep customer > /dev/null && echo "yes" || echo "no"\`
+                  tidbHost=\`echo \$cluster_tidb | awk -F ":" '{print \$1}'\`
+                  tidbPort=\`echo \$cluster_tidb | awk -F ":" '{print \$2}'\`
+                  isTpccExist=\`mysql -uroot -P "\$tidbPort" -h "\$tidbHost" -e "use tpcc; show tables;" | grep customer > /dev/null && echo "yes" || echo "no"\`
                   if [ "\$isTpccExist" == "no" ]; then
-                    # mysql -uroot -P4000 -h "\$tidbHost" -e "create database tpcc;"
-                    echo "\`date\` restore..."
-
-                    # go-tpc -H \$tidbHost -P4000 -D tpcc tpcc prepare --warehouses 10
-
-                    # sql="restore database * from '$(params.tpcc-data-uri)/?endpoint=http://minio.pingcap.net:9000&access-key=minioadmin&secret-access-key=minioadmin&force-path-style=true';"
-                    # mysql -uroot -h \$tidbHost -P4000 -e "\$sql"
-
-                    br -V
-                    br restore full --pd="\$pdHost:2379" --storage "$(params.tpcc-data-uri)/" \
-                       --s3.endpoint http://minio.pingcap.net:9000 --send-credentials-to-tikv=true
-
-                    ls /tmp/br.log*
-                    cat /tmp/br.log*
-
-                    echo "\`date\` restore...done"
+                    mysql -uroot -P4000 -h "\$tidbHost" -e "create database tpcc;"
+                    echo "\`date\` prepare..."
+                    go-tpc -H \$tidbHost -P \$tidbPort -D tpcc tpcc prepare -T \$(params.threads) --warehouses \$(params.warehouses)
+                    echo "\`date\` prepare...done"
                   else
                     echo "database tpcc already exists"
                   fi
-
       EOF
       echo "generating worload manifest...done"
       cat "$(workspaces.manifest.path)/restore.yaml"
@@ -76,7 +69,7 @@ spec:
     script: |
       #!/usr/bin/env bash
       set -xe
-      twName="$(params.run-id)"
+      twName="$(params.workload-name)"
       echo "ensure test-workload($twName) does not exists"
       exists=`kubectl get tw $twName >/dev/null && echo "yes" || echo "no"`
       if [ "$exists" == "yes" ]; then

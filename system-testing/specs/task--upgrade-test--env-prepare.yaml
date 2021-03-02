@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: systesting--upgrade-test--env-prepare
+  name: systesting--reliability-test--env-prepare
 spec:
   params:
     - name: run-id
@@ -24,8 +24,8 @@ spec:
         items:
           - name: workload
             spec:
-              memory: 16GB
-              cores: 8
+              memory: 32GB
+              cores: 16
           - name: ctl
             spec:
               memory: 8GB
@@ -74,6 +74,15 @@ spec:
                   size: 3TB
                   mountPath: /disk1
           - name: kv4
+            spec:
+              memory: 8GB
+              cores: 8
+              disks:
+                disk1:
+                  kind: nvme
+                  size: 3TB
+                  mountPath: /disk1
+          - name: kv5
             spec:
               memory: 8GB
               cores: 8
