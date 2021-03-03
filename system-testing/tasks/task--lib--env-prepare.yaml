@@ -1,0 +1,56 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: st--lib--env-prepare
+spec:
+  params:
+    - name: trr-name
+      type: string
+    - name: tct-name
+      type: string
+    - name: trr-manifest
+      type: string
+    - name: tct-manifest
+      type: string
+  workspaces:
+  - name: manifest
+    mountPath: /adhoc-manifests
+  steps:
+  - name: generate-manifest
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      echo "generating resources manifest..."
+      cat <<EOF > "$(workspaces.manifest.path)/test_resources.yaml"
+      $(params.trr-manifest)
+      EOF
+      echo "generating resources manifest...done"
+      cat "$(workspaces.manifest.path)/test_resources.yaml"
+
+      echo "generating cluster manifest..."
+      cat <<EOF > "$(workspaces.manifest.path)/test_cluster.yaml"
+      $(params.tct-manifest)
+      EOF
+      echo "generating cluster manifest...done"
+      cat "$(workspaces.manifest.path)/test_cluster.yaml"
+  - name: create-resources-and-cluster
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      set -ex
+      kubectl apply -f "$(workspaces.manifest.path)/test_resources.yaml"
+      kubectl apply -f "$(workspaces.manifest.path)/test_cluster.yaml"
+  - name: wait-until-cluster-ready
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      while true
+      do
+        state=`kubectl get tct "$(params.tct-name)" -ojsonpath='{.status.state}' || echo unknown`
+        echo "current resource state: $state"
+        if [ "ready" = "$state" ]; then
+            break
+        fi
+        echo "test resources isn't ready now, wait another 10s..."
+        sleep 10
+      done

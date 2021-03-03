@@ -1,0 +1,81 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: st--workload-tpcc--run
+spec:
+  params:
+    - name: run-id
+      type: string
+    - name: db-name
+      type: string
+      default: test
+  workspaces:
+  - name: manifest
+    mountPath: /adhoc-manifests
+  steps:
+  - name: generate-run-manifest
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      echo "generating worload manifest..."
+      file="$(workspaces.manifest.path)/run.yaml"
+      cat <<EOF > $file
+      apiVersion: naglfar.pingcap.com/v1
+      kind: TestWorkload
+      metadata:
+        name: "$(params.run-id)-workload-run"
+      spec:
+        clusterTopologies:
+          - name: "$(params.run-id)"
+            aliasName: cluster
+        workloads:
+          - name: "$(params.run-id)"
+            dockerContainer:
+              resourceRequest:
+                name: "$(params.run-id)"
+                node: workload
+              image: hub.pingcap.net/mahjonp/bench-toolset
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -x
+                  tidbHost=\`echo \$cluster_tidb | awk -F ":" '{print \$1}'\`
+                  tidbPort=\`echo \$cluster_tidb | awk -F ":" '{print \$2}'\`
+                  go-tpc -H \$tidbHost -P \$tidbPort -D \$(params.db-name) tpcc run --time 300m
+      EOF
+      echo "generating workload-run manifest...done"
+      cat "$file"
+  - name: workload-tail-f
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      set -xe
+      twName="$(params.run-id)-workload-run"
+      echo "ensure test-workload($twName) does not exists"
+      exists=`kubectl get tw $twName >/dev/null && echo "yes" || echo "no"`
+      if [ "$exists" == "yes" ]; then
+        echo "test workload($twName) already exists, delete it."
+        kubectl delete tw $twName
+      fi
+
+      echo "create test-workload($twName)..."
+      kubectl apply -f "$(workspaces.manifest.path)/run.yaml"
+      while true
+      do
+        state=`kubectl get tw "$twName" -ojsonpath='{.status.state}' || echo pending`
+        echo "current workload state: $state"
+        if [ "succeeded" == "$state" ]; then
+          break
+        elif [ "failed" == "$state" ]; then
+          break
+        elif [ "running" == "$state" ]; then
+          break
+        fi
+        echo "workload wait another 5s"
+        sleep 5
+      done
+      curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/PingCAP-QE/Naglfar/master/scripts/kubectl-naglfar-installer.sh | sh
+      ~/.Naglfar/bin/naglfar logs $twName -n $(context.taskRun.namespace) --follow
+      kubectl delete tw $twName

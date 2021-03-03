@@ -1,0 +1,28 @@
+apiVersion: naglfar.pingcap.com/v1
+kind: TestResourceRequest
+metadata:
+  name: qupeng
+spec:
+  items:
+   - name: ctl-pd-db-monitor
+     spec:
+       memory: 32GB
+       cores: 16
+   - name: kv1
+     spec:
+       memory: 32GB
+       cores: 16
+       disks:
+         disk1:
+           kind: nvme
+           size: 3TB
+           mountPath: /disk1
+   - name: kv2
+     spec:
+       memory: 32GB
+       cores: 16
+       disks:
+         disk1:
+           kind: nvme
+           size: 3TB
+           mountPath: /disk1

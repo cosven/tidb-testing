@@ -1,0 +1,57 @@
+apiVersion: naglfar.pingcap.com/v1
+kind: TestClusterTopology
+metadata:
+  name: qupeng
+spec:
+  resourceRequest: qupeng
+  tidbCluster:
+    global:
+      deployDir: "/disks1/deploy"
+      dataDir: "/disks1/data"
+    version:
+      version: nightly
+    control: ctl-pd-db-monitor
+    serverConfigs:
+      pd: |-
+        replication.location-labels: ["host"]
+      tikv: |-
+        gc.enable-compaction-filter: true
+        raftstore.apply-pool-size: 3
+    tikv:
+      - host: kv1
+        port: 20160
+        statusPort: 20180
+        deployDir: /disk1/deploy/tikv-20160
+        dataDir: /disk1/data/tikv-20160
+        config: |
+          server.labels: { host: "host1" }
+      - host: kv1
+        port: 20161
+        statusPort: 20181
+        deployDir: /disk1/deploy/tikv-20161
+        dataDir: /disk1/data/tikv-20161
+        config: |
+          server.labels: { host: "host2" }
+      - host: kv2
+        port: 20160
+        statusPort: 20180
+        deployDir: /disk1/deploy/tikv-20160
+        dataDir: /disk1/data/tikv-20160
+        config: |
+          server.labels: { host: "host3" }
+      - host: kv2
+        port: 20161
+        statusPort: 20181
+        deployDir: /disk1/deploy/tikv-20161
+        dataDir: /disk1/data/tikv-20161
+        config: |
+          server.labels: { host: "host4" }
+    tidb:
+      - host: ctl-pd-db-monitor
+    pd:
+      - host: ctl-pd-db-monitor
+    monitor:
+      - host: ctl-pd-db-monitor
+    grafana:
+      - host: ctl-pd-db-monitor
+        port: 9000

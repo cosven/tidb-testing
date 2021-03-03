@@ -1,0 +1,51 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: systesting-env-ops
+spec:
+  params:
+    - name: run-id
+      type: string
+  workspaces:
+  - name: manifest
+    mountPath: /adhoc-manifests
+  steps:
+  - name: generate-manifest
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      echo "generating ops-resources manifest..."
+      cat <<EOF > "$(workspaces.manifest.path)/ops-resources.yaml"
+      apiVersion: naglfar.pingcap.com/v1
+      kind: TestClusterTopology
+      metadata:
+        name: $(params.run-id)-ops
+      spec:
+        resourceRequest: $(params.run-id)
+        tidbCluster:
+          global:
+            deployDir: "/disks1/deploy"
+            dataDir: "/disks1/data"
+          version:
+            version: v5.0.0-rc
+          control: ctl
+          tikv:
+            - host: kv1
+            - host: kv2
+            - host: kv3
+            - host: kv4
+          tidb:
+            - host: db-pd-ctl
+          pd:
+            - host: db-pd-ctl
+          monitor:
+            - host: db-pd-ctl
+          grafana:
+            - host: db-pd-ctl
+              port: 9000
+      EOF
+  - name: apply-manifest
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      kubectl apply -f "$(workspaces.manifest.path)/ops-resources.yaml"

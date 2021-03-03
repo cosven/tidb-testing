@@ -1,0 +1,77 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: st--1pd1db3kv
+spec:
+  params:
+    - name: run-id
+      type: string
+      default: st--1pd1db3kv
+    - name: tc-version
+      type: string
+      default: nightly
+  workspaces:
+    - name: manifest
+  tasks:
+    - name: env-prepare
+      taskRef:
+        name: st--lib--env-prepare
+      workspaces:
+        - name: manifest
+          workspace: manifest
+      params:
+        - name: trr-name
+          value: "$(params.run-id)"
+        - name: tct-name
+          value: "$(params.run-id)"
+        - name: trr-manifest
+          value: |
+            apiVersion: naglfar.pingcap.com/v1
+            kind: TestResourceRequest
+            metadata:
+              name: $(params.run-id)
+            spec:
+              items:
+                - name: workload
+                  spec: {memory: 8GB, cores: 4}
+                - name: ctl
+                  spec: {memory: 8GB, cores: 4}
+                - name: pd
+                  spec: {memory: 16GB, cores: 16}
+                - name: db
+                  spec: {memory: 16GB, cores: 16}
+                - name: kv1
+                  spec: {memory: 16GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
+                - name: kv2
+                  spec: {memory: 16GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
+                - name: kv3
+                  spec: {memory: 16GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
+        - name: tct-manifest
+          value: |
+            apiVersion: naglfar.pingcap.com/v1
+            kind: TestClusterTopology
+            metadata:
+              name: $(params.run-id)
+            spec:
+              resourceRequest: $(params.run-id)
+              tidbCluster:
+                global:
+                  deployDir: "/disk1/deploy"
+                  dataDir: "/disk1/data"
+                version:
+                  version: $(params.tc-version)
+                tikv:
+                  - host: kv1
+                  - host: kv2
+                  - host: kv3
+                tidb:
+                  - host: db
+                pd:
+                  - host: pd
+                control: ctl
+                monitor:
+                  - host: ctl
+                    port: 9090
+                grafana:
+                  - host: ctl
+                    port: 3000

@@ -1,0 +1,17 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: systesting-teardown
+
+spec:
+  params:
+    - name: run-id
+      type: string
+  steps:
+  - name: teardown-all
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      kubectl delete tct $(params.run-id)
+      kubectl delete tw  $(params.run-id)
+      kubectl delete trr $(params.run-id)

@@ -1,0 +1,98 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: st--workload-tpcc--prepare
+spec:
+  params:
+    - name: workload-name
+      type: string
+
+    # dependencies
+    - name: trr-name
+      type: string
+    - name: tct-name
+      type: string
+
+    # tpcc parameters
+    - name: threads
+      type: string
+    - name: warehouses
+      type: string
+  workspaces:
+  - name: manifest
+    mountPath: /adhoc-manifests
+
+  steps:
+  - name: generate-restore-manifest
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      echo "generating worload manifest..."
+      cat <<EOF > "$(workspaces.manifest.path)/restore.yaml"
+      apiVersion: naglfar.pingcap.com/v1
+      kind: TestWorkload
+      metadata:
+        name: "$(params.workload-name)"
+      spec:
+        clusterTopologies:
+          - name: "$(params.tct-name)"
+            aliasName: cluster
+        workloads:
+          - name: "$(params.workload-name)"
+            dockerContainer:
+              resourceRequest:
+                name: "$(params.trr-name)"
+                node: workload
+              image: hub.pingcap.net/mahjonp/bench-toolset
+              imagePullPolicy: Always
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -x
+                  tidbHost=\`echo \$cluster_tidb | awk -F ":" '{print \$1}'\`
+                  tidbPort=\`echo \$cluster_tidb | awk -F ":" '{print \$2}'\`
+                  isTpccExist=\`mysql -uroot -P "\$tidbPort" -h "\$tidbHost" -e "use tpcc; show tables;" | grep customer > /dev/null && echo "yes" || echo "no"\`
+                  if [ "\$isTpccExist" == "no" ]; then
+                    mysql -uroot -P4000 -h "\$tidbHost" -e "create database tpcc;"
+                    echo "\`date\` prepare..."
+                    go-tpc -H \$tidbHost -P \$tidbPort -D tpcc tpcc prepare -T \$(params.threads) --warehouses \$(params.warehouses)
+                    echo "\`date\` prepare...done"
+                  else
+                    echo "database tpcc already exists"
+                  fi
+      EOF
+      echo "generating worload manifest...done"
+      cat "$(workspaces.manifest.path)/restore.yaml"
+  - name: workload-tail-f
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      set -xe
+      twName="$(params.workload-name)"
+      echo "ensure test-workload($twName) does not exists"
+      exists=`kubectl get tw $twName >/dev/null && echo "yes" || echo "no"`
+      if [ "$exists" == "yes" ]; then
+        echo "test workload($twName) already exists, delete it."
+        kubectl delete tw $twName
+      fi
+
+      echo "create test-workload($twName)..."
+      kubectl apply -f "$(workspaces.manifest.path)/restore.yaml"
+      while true
+      do
+        state=`kubectl get tw "$twName" -ojsonpath='{.status.state}' || echo pending`
+        echo "current workload state: $state"
+        if [ "succeeded" == "$state" ]; then
+          break
+        elif [ "failed" == "$state" ]; then
+          break
+        elif [ "running" == "$state" ]; then
+          break
+        fi
+        echo "workload wait another 5s"
+        sleep 5
+      done
+      curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/PingCAP-QE/Naglfar/master/scripts/kubectl-naglfar-installer.sh | sh
+      ~/.Naglfar/bin/naglfar logs $twName -n $(context.taskRun.namespace) --follow
+      kubectl delete tw $twName
