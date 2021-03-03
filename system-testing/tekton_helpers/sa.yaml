@@ -55,6 +55,9 @@ subjects:
 - kind: ServiceAccount
   name: system-testing
   namespace: user-cosven-adhoc
+- kind: ServiceAccount
+  name: system-testing
+  namespace: user-cosven-tpcc-prepare-30k-v4
 ---
 apiVersion: v1
 kind: ServiceAccount

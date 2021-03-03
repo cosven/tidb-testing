@@ -42,15 +42,15 @@ spec:
                 - name: db-pd-3
                   spec: {memory: 16GB, cores: 16}
                 - name: kv1
-                  spec: {memory: 8GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
+                  spec: {memory: 16GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
                 - name: kv2
-                  spec: {memory: 8GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
+                  spec: {memory: 16GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
                 - name: kv3
-                  spec: {memory: 8GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
+                  spec: {memory: 16GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
                 - name: kv4
-                  spec: {memory: 8GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
+                  spec: {memory: 16GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
                 - name: kv5
-                  spec: {memory: 8GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
+                  spec: {memory: 16GB, cores: 8, disks: {disk1: {kind: nvme, size: 3TB, mountPath: /disk1}}}
         - name: tct-manifest
           value: |
             apiVersion: naglfar.pingcap.com/v1
@@ -64,10 +64,7 @@ spec:
                   deployDir: "/disk1/deploy"
                   dataDir: "/disk1/data"
                 version:
-                  version: v5.0.0-rc
-                  tikvDownloadURL: http://fileserver.pingcap.net/download/builds/pingcap/tikv/c8e1c151583d893f8f37896c24635b8d6c32dd98/centos7/tikv-server.tar.gz
-                  tidbDownloadURL: http://fileserver.pingcap.net/download/builds/pingcap/pd/4e028c72d3be5f4160fb55555291e222e69db501/centos7/pd-server.tar.gz
-                  pdDownloadURL: http://fileserver.pingcap.net/download/builds/pingcap/pd/4e028c72d3be5f4160fb55555291e222e69db501/centos7/pd-server.tar.gz
+                  version: v4.0.10
                 tikv:
                   - host: kv1
                   - host: kv2
@@ -114,6 +111,8 @@ spec:
     - name: tpcc-prepare
       taskRef:
         name: st--workload-tpcc--prepare
+      runAfter:
+        - env-prepare
       workspaces:
         - name: manifest
           workspace: manifest
