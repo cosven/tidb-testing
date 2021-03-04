@@ -1,0 +1,117 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: st--workload-compaction-filter-sysbench
+spec:
+  params:
+    # resource namespace
+    - name: res-ns
+      type: string
+
+    - name: workload-name
+      type: string
+
+    # dependencies
+    - name: trr-name
+      type: string
+    - name: tct-name
+      type: string
+    - name: workload-script
+      type: string
+      default: |
+        set -x
+        tidbHost=`echo $cluster_tidb0 | awk -F ":" '{print $1}'`
+        tidbPort=`echo $cluster_tidb0 | awk -F ":" '{print $2}'`
+        isDBExist=`mysql -uroot -P "$tidbPort" -h "$tidbHost" -e "use sbtest; show tables;" | grep sbtest > /dev/null && echo "yes" || echo "no"`
+        if [ "$isDBExist" == "no" ]; then
+          mysql -uroot -P4000 -h "$tidbHost" -e "create database sbtest;"
+          echo "`date` prepare..."
+          sysbench  --mysql-host="$tidbHost" --mysql-port="$tidbPort" --mysql-user=root --tables=16 --table-size=10 --threads=8 --time=60 updates prepare
+          echo "`date` prepare...done"
+        else
+          echo "database sysbench already exists"
+        fi
+        sysbench  --mysql-host="$tidbHost" --mysql-port="$tidbPort" --mysql-user=root --tables=16 --table-size=10 --threads=8 --time=60 updates run
+  workspaces:
+  - name: manifest
+    mountPath: /adhoc-manifests
+
+  steps:
+  - name: generate-run-manifest
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      echo "generating worload manifest..."
+      cat <<EOF > "$(workspaces.manifest.path)/run.yaml"
+      apiVersion: naglfar.pingcap.com/v1
+      kind: TestWorkload
+      metadata:
+        name: "$(params.workload-name)"
+      spec:
+        clusterTopologies:
+          - name: "$(params.tct-name)"
+            aliasName: cluster
+        workloads:
+          - name: "$(params.workload-name)"
+            dockerContainer:
+              resourceRequest:
+                name: "$(params.trr-name)"
+                node: workload
+              image: hub.pingcap.net/system-testing/compaction-filter-sysbench:210304
+              imagePullPolicy: Always
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  $(params.workload-script)
+                  set -x
+                  tidbHost=\`echo \$cluster_tidb0 | awk -F ":" '{print \$1}'\`
+                  tidbPort=\`echo \$cluster_tidb0 | awk -F ":" '{print \$2}'\`
+                  isDBExist=\`mysql -uroot -P "\$tidbPort" -h "\$tidbHost" -e "use sbtest; show tables;" | grep sbtest > /dev/null && echo "yes" || echo "no"\`
+                  if [ "\$isDBExist" == "no" ]; then
+                    mysql -uroot -P4000 -h "\$tidbHost" -e "create database sbtest;"
+                    echo "\`date\` prepare..."
+                    sysbench  --mysql-host="\$tidbHost" --mysql-port="\$tidbPort" --mysql-user=root --tables=16 --table-size=10 --threads=8 --time=60 updates prepare
+                    echo "\`date\` prepare...done"
+                  else
+                    echo "database sysbench already exists"
+                  fi
+                  sysbench  --mysql-host="\$tidbHost" --mysql-port="\$tidbPort" --mysql-user=root --tables=16 --table-size=10 --threads=8 --time=60 updates run
+      EOF
+      echo "generating worload manifest...done"
+      cat "$(workspaces.manifest.path)/run.yaml"
+  - name: workload-tail-f
+    image: hub.pingcap.net/qa/kubetools:20200730
+    script: |
+      #!/usr/bin/env bash
+      set -xe
+      shopt -s expand_aliases
+      twName="$(params.workload-name)"
+      namespace="$(params.res-ns)"
+      echo "ensure test-workload($twName) does not exists"
+      alias kubectl="kubectl -n $namespace"
+      exists=`kubectl get tw $twName >/dev/null && echo "yes" || echo "no"`
+      if [ "$exists" == "yes" ]; then
+        echo "test workload($twName) already exists, delete it."
+        kubectl delete tw $twName
+      fi
+
+      echo "create test-workload($twName)..."
+      kubectl apply -f "$(workspaces.manifest.path)/run.yaml" -n $namespace
+      while true
+      do
+        state=`kubectl get tw "$twName" -ojsonpath='{.status.state}' || echo pending`
+        echo "current workload state: $state"
+        if [ "succeeded" == "$state" ]; then
+          break
+        elif [ "failed" == "$state" ]; then
+          break
+        elif [ "running" == "$state" ]; then
+          break
+        fi
+        echo "workload wait another 5s"
+        sleep 5
+      done
+      curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/PingCAP-QE/Naglfar/master/scripts/kubectl-naglfar-installer.sh | sh
+      ~/.Naglfar/bin/naglfar logs $twName -n $namespace --follow
+      kubectl delete tw $twName -n $namespace
