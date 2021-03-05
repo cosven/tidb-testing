@@ -40,3 +40,15 @@
    ```
    tkn-start-pipeline st--1pd1db3kv -p run-id=$ST_NAMESPACE
    ```
+
+## 执行特定的测试
+
+### 执行 Compaction Filter 的 Sysbench 测试
+
+先部署集群资源，假设资源部署在 `st--1pd1db3kv` 名字空间下。
+
+```
+tkn-start-task st--workload-compaction-filter-sysbench -p res-ns=st--1pd1db3kv \
+  -p tct-name=st--1pd1db3kv -p trr-name=st--1pd1db3kv \
+  -p workload-script-b64=$(base64 workload_script/compaction_filter_sysbench.sh)
+```

@@ -4,34 +4,21 @@ metadata:
   name: st--workload-compaction-filter-sysbench
 spec:
   params:
-    # resource namespace
+    # test resouces info, including tidb cluster and workload
     - name: res-ns
       type: string
 
-    - name: workload-name
-      type: string
-
-    # dependencies
-    - name: trr-name
-      type: string
+    # tidb cluster
     - name: tct-name
       type: string
-    - name: workload-script
+
+    # workload info
+    - name: trr-name
       type: string
-      default: |
-        set -x
-        tidbHost=`echo $cluster_tidb0 | awk -F ":" '{print $1}'`
-        tidbPort=`echo $cluster_tidb0 | awk -F ":" '{print $2}'`
-        isDBExist=`mysql -uroot -P "$tidbPort" -h "$tidbHost" -e "use sbtest; show tables;" | grep sbtest > /dev/null && echo "yes" || echo "no"`
-        if [ "$isDBExist" == "no" ]; then
-          mysql -uroot -P4000 -h "$tidbHost" -e "create database sbtest;"
-          echo "`date` prepare..."
-          sysbench  --mysql-host="$tidbHost" --mysql-port="$tidbPort" --mysql-user=root --tables=16 --table-size=10 --threads=8 --time=60 updates prepare
-          echo "`date` prepare...done"
-        else
-          echo "database sysbench already exists"
-        fi
-        sysbench  --mysql-host="$tidbHost" --mysql-port="$tidbPort" --mysql-user=root --tables=16 --table-size=10 --threads=8 --time=60 updates run
+    - name: workload-script-b64
+      type: string
+      default: ""
+
   workspaces:
   - name: manifest
     mountPath: /adhoc-manifests
@@ -46,13 +33,13 @@ spec:
       apiVersion: naglfar.pingcap.com/v1
       kind: TestWorkload
       metadata:
-        name: "$(params.workload-name)"
+        name: "$(context.task.name)"
       spec:
         clusterTopologies:
           - name: "$(params.tct-name)"
             aliasName: cluster
         workloads:
-          - name: "$(params.workload-name)"
+          - name: workload-1
             dockerContainer:
               resourceRequest:
                 name: "$(params.trr-name)"
@@ -63,20 +50,11 @@ spec:
                 - /bin/bash
                 - -c
                 - |
-                  $(params.workload-script)
-                  set -x
-                  tidbHost=\`echo \$cluster_tidb0 | awk -F ":" '{print \$1}'\`
-                  tidbPort=\`echo \$cluster_tidb0 | awk -F ":" '{print \$2}'\`
-                  isDBExist=\`mysql -uroot -P "\$tidbPort" -h "\$tidbHost" -e "use sbtest; show tables;" | grep sbtest > /dev/null && echo "yes" || echo "no"\`
-                  if [ "\$isDBExist" == "no" ]; then
-                    mysql -uroot -P4000 -h "\$tidbHost" -e "create database sbtest;"
-                    echo "\`date\` prepare..."
-                    sysbench  --mysql-host="\$tidbHost" --mysql-port="\$tidbPort" --mysql-user=root --tables=16 --table-size=10 --threads=8 --time=60 updates prepare
-                    echo "\`date\` prepare...done"
-                  else
-                    echo "database sysbench already exists"
-                  fi
-                  sysbench  --mysql-host="\$tidbHost" --mysql-port="\$tidbPort" --mysql-user=root --tables=16 --table-size=10 --threads=8 --time=60 updates run
+                  echo "Generating script.sh"
+                  echo "$(params.workload-script-b64)" | base64 -d > script.sh
+                  cat script.sh
+                  echo "Run script.sh"
+                  bash script.sh
       EOF
       echo "generating worload manifest...done"
       cat "$(workspaces.manifest.path)/run.yaml"
@@ -86,7 +64,7 @@ spec:
       #!/usr/bin/env bash
       set -xe
       shopt -s expand_aliases
-      twName="$(params.workload-name)"
+      twName="$(context.task.name)"
       namespace="$(params.res-ns)"
       echo "ensure test-workload($twName) does not exists"
       alias kubectl="kubectl -n $namespace"
