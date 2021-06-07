@@ -76,7 +76,7 @@ def update_spreadsheet(issue_iterator):
             # Only compare issue status and versions
             if row[1:3] != issue[1:3]:
                 # Update old data row by row
-                worksheet.update(f'B{next_row_id}:D{next_row_id}', [issue[1:]])
+                worksheet.update(f'B{next_row_id}:D{next_row_id}', [issue[1:3]])
                 logger.info(f'row:{row_id} {row[0]} is updated.')
             else:
                 logger.info(f'row:{row_id} {row[0]} is unchanged.')
