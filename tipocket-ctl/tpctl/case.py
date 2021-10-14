@@ -107,7 +107,7 @@ class ArgoCase:
             },
             'container': {
                 'name': 'notify-py',
-                'image': 'hub.pingcap.net/tpctl/notify:2021-01-05',
+                'image': 'hub.pingcap.net/cosven/notify:2021-01-05',
                 'imagePullpolicy': 'Always',
                 'args': [
                     ','.join(users),
