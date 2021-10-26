@@ -64,7 +64,7 @@ COMMON_OPTIONS = (
 
     optgroup.group('K8s options',
                    help='different K8s cluster has different values'),
-    optgroup.option('--storage-class', default='local-storage',
+    optgroup.option('--storage-class', default='local-path',
                     show_default=True),
 
     # optgroup.group('Test case logging options',
