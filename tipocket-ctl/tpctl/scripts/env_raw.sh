@@ -1,9 +1,9 @@
 # WARNING: All commands connect to `tidb` container of tidb pods by default.
 # 	   As tidb pod has two containers
 OUTPUT_DIR=output
-CASE_POD_ID=$(argo get -n argo $DEPLOY_ID -o json \
+CASE_POD_ID=$(argo get -n $CASE_NAMESPACE $DEPLOY_ID -o json \
               | jq -r '.status.nodes[] | select(.type == "Pod" and .templateName != "notify") | .id')
-CLUSTER_NAMESPACE=$(argo get -n argo $DEPLOY_ID -o json \
+CLUSTER_NAMESPACE=$(argo get -n $CASE_NAMESPACE $DEPLOY_ID -o json \
                     | jq -r '.spec.templates[-1].container.command[2]' \
                     | grep -oP '\-namespace=".*?"' \
                     | grep -o '".*"' \
@@ -52,12 +52,12 @@ function output_filepath {
 }
 
 function get_argo_steps {
-	sed -n '/STEP */,$p' <(argo get -n argo $DEPLOY_ID)
+	sed -n '/STEP */,$p' <(argo get -n $CASE_NAMESPACE $DEPLOY_ID)
 }
 
 function t_log_case {
 	OP=$(output_filepath log_case)
-	kubectl logs --namespace argo -c main $CASE_POD_ID > $OP
+	kubectl logs --namespace $CASE_NAMESPACE -c main $CASE_POD_ID > $OP
 	echo "log stored in $OP"
 }
 
