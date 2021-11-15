@@ -21,6 +21,7 @@ IGNORE_OPTION_LIST = [
     'cron',
     'cron_schedule',
     'description',
+    'output',
 ]
 
 # Those options would be passed to tipocket case,
@@ -35,6 +36,7 @@ COMMON_OPTIONS = (
     optgroup.option('--description', default=''),
     optgroup.option('--cron/--not-cron', default=False),
     optgroup.option('--cron-schedule', default='30 17 * * *'),
+    optgroup.option('--output', default=''),
 
     optgroup.group('Test case common options'),
     optgroup.option('--prepare-sql', default=''),
@@ -189,7 +191,7 @@ def deploy(**params):
     click.secho(case_cmd, fg='blue')
 
     # generate argo workflow yaml
-    argo_workflow_filepath = f'/tmp/{deploy_id}.yaml'
+    argo_workflow_filepath = f'/tmp/{deploy_id}.yaml' if not params['output'] else params['output']
     image = params['image']
     tidb_cluster = get_tidb_cluster_spec_from_params(params)
     subscribers = params['subscriber'] or None
