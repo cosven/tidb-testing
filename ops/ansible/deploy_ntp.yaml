@@ -1,0 +1,26 @@
+---
+
+- hosts: servers
+  tasks:
+    - name: Install ntp
+      yum:
+        name: ntp
+        state: present
+
+    - name: Install ntpdate
+      yum:
+        name: ntpdate
+        state: present
+
+    - name: Stop ntpd
+      service:
+        name: ntpd
+        state: stopped
+
+    - name: Ajust time with pool.ntp.org
+      shell: ntpdate pool.ntp.org
+
+    - name: Start ntpd
+      service:
+        name: ntpd
+        state: started

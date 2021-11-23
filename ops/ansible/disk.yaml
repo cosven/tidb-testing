@@ -1,0 +1,38 @@
+---
+
+# Some machines have not mount the disks
+- hosts: servers
+  vars:
+    disks:
+      /dev/nvme0n1: /data1
+      /dev/nvme1n1: /data2
+
+  vars_prompt:
+    - name: re_mount_disk
+      prompt: "!!! Are you sure that you want to re-mount the disk (yes/no)?"
+      private: no
+
+  tasks:
+    - name: Unmount disk
+      mount:
+        path: "{{ item.value }}"
+        state: absent
+      with_dict: "{{ disks }}"
+      when: re_mount_disk == "yes"
+
+    - name: Format disk
+      filesystem:
+        fstype: ext4
+        dev: "{{ item.key }}"
+      with_dict: "{{ disks }}"
+      when: re_mount_disk == "yes"
+
+    - name: Mount disk
+      mount:
+        path: "{{ item.value }}"
+        src: "{{ item.key }}"
+        fstype: ext4
+        opts: "defaults,nodelalloc,noatime"
+        state: mounted
+      with_dict: "{{ disks }}"
+      when: re_mount_disk == "yes"

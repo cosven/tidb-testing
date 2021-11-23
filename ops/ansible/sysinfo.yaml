@@ -1,0 +1,19 @@
+---
+- hosts: servers
+  tasks:
+  - name: hostname
+    vars:
+      msg: |
+        All Interface List: {{ ansible_interfaces }}
+        All IP: {{ ansible_all_ipv4_addresses }}
+        Gateway: {{ ansible_default_ipv4.gateway }}
+        Distribution: {{ ansible_distribution }}
+        Release: {{ ansible_distribution_release }}
+        Distribution Version: {{ ansible_distribution_version }}
+        Kernel: {{ ansible_kernel }}
+        Architecture: {{ ansible_architecture }}
+        Memory: {{ ansible_memtotal_mb }}
+        CPU:  {{ ansible_processor_cores }}
+        Devices: {{ ansible_mounts | json_query('[].device') }}
+    debug:
+      msg: "{{ msg.split('\n') }}"

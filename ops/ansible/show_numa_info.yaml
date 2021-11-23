@@ -1,0 +1,14 @@
+---
+- hosts: servers
+  tasks:
+  - name: Install numactl
+    yum:
+      name: numactl
+      state: present
+
+  - name: Run numactl -s
+    shell: numactl -H | head -1
+    register: numactl
+
+  - name: Print
+    debug: var=numactl.stdout_lines

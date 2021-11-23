@@ -1,0 +1,35 @@
+---
+
+# Note that the tasks output a lot of logs, you can ignore them
+# and check the final result.
+- hosts: servers
+  tasks:
+    - name: Check if services are deployed
+      shell: systemctl list-unit-files | grep "{{ item }}"
+      register: services_present
+      ignore_errors: true
+      no_log: true
+      with_items:
+        - tikv-21161
+        - node_exporter-9103
+
+    #- debug:
+    #    var: services_present
+
+    - name: Disable services
+      systemd:
+        state: stopped
+        enabled: no
+        name: "{{ item.item }}"
+      with_items: "{{ services_present.results }}"
+      when: item.rc == 0
+    - name: Remove service files
+      file:
+        state: absent
+        path: "/etc/systemd/system/{{ item }}.service"
+      with_items: "{{ services_present.results }}"
+      when: item.rc == 0
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
