@@ -1,0 +1,25 @@
+---
+
+- hosts: servers
+  tasks:
+    - name: Create new user 'db'
+      user:
+        name: "db"
+        group: "db"
+        # password is `db`.
+        # python3 -c "from passlib.hash import sha512_crypt; import getpass; print(sha512_crypt.using(rounds=5000).hash(getpass.getpass()))"
+        password: "$6$Ru.USsaE/mp5zO9E$3VAUCCHBE.t45mrqnEOX9ciwLFPHuC9KE05BvuvkmvwIoCoz/SDLPAor/2G48L2p7X7Fokl9Ezib0Ofezs/Th0"
+        create_home: true
+        generate_ssh_key: yes
+        ssh_key_bits: 2048
+        ssh_key_file: ~/.ssh/db_id_rsa
+    - name: Create new user 'admin'
+      user:
+        name: "admin"
+        # password is `admin`.
+        group: "db"
+        password: "$6$rxj6OsdF4Cfd8MDJ$rqx5z6DXAaB6Svz./V/t8wzZNQRyo6uBhPAxHBCR6E8mFRzYJGgJQM1dmie8MLXtFkkSBgTnToEmQkdj657aB1"
+        create_home: true
+        generate_ssh_key: yes
+        ssh_key_bits: 2048
+        ssh_key_file: ~/.ssh/admin_id_rsa

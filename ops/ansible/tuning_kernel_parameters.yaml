@@ -18,6 +18,7 @@
         - { name: 'vm.swappiness', value: 0 }
         - { name: 'net.ipv4.tcp_syncookies', value: 0 }
         - { name: 'fs.file-max', value: 1000000 }
+        - { name: 'fs.aio-max-nr', value: 1048576 }
 
     - name: update /etc/security/limits.conf
       vars:
@@ -25,10 +26,14 @@
       blockinfile:
         dest: /etc/security/limits.conf
         insertbefore: '# End of file'
+        #block: |
+        #  {{ deploy_user }}        soft        nofile        1000000
+        #  {{ deploy_user }}        hard        nofile        1000000
+        #  {{ deploy_user }}        soft        stack         10240
         block: |
-          {{ deploy_user }}        soft        nofile        1000000
-          {{ deploy_user }}        hard        nofile        1000000
-          {{ deploy_user }}        soft        stack         10240
+          *       soft        nofile        1000000
+          *       hard        nofile        1000000
+          *       soft        stack         10240
 
     - name: Disable swap
       command: swapoff -a

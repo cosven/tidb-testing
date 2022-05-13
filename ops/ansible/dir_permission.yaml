@@ -1,0 +1,14 @@
+---
+
+- hosts: servers
+  tasks:
+    - name: Set /data permission
+      file:
+        path: '{{ item.path }}'
+        owner: db
+        group: db
+      loop:
+        - { path: "/data1"}
+        - { path: "/data2"}
+        - { path: "/app1"}
+        - { path: "/app2"}

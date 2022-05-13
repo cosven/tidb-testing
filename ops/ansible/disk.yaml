@@ -4,8 +4,10 @@
 - hosts: servers
   vars:
     disks:
-      /dev/nvme0n1: /data1
-      /dev/nvme1n1: /data2
+      #/dev/nvme0n1: /data1
+      #/dev/nvme1n1: /data2
+      /dev/sdb: /app1
+      /dev/sdc: /app2
 
   vars_prompt:
     - name: re_mount_disk
