@@ -1,0 +1,61 @@
+generateName: cosven-tikv-
+reclaimPolicy:
+  gcStrategy:
+    onFailure:
+      artifact:
+        monitor: true
+        log: true
+      reserveEnv:
+        durationOnWorkingHour: 6h
+items:
+- name: tc
+  type: TIDB_CLUSTER
+  spec:
+    version: v5.0.4
+    pd:
+      replicas: 1
+      storageClassName: "fast-disks"
+      requests:
+        cpu: 4000m
+        memory: 8Gi
+      limits:
+        cpu: 4000m
+        memory: 8Gi
+      baseImage: hub.pingcap.net/qa/pd
+    tikv:
+      replicas: 4
+      maxReplicas: 5
+      storageClassName: "fast-disks"
+      requests:
+        cpu: 8000m
+        memory: 16Gi
+        storage: 1500Gi
+      limits:
+        cpu: 8000m
+        memory: 16Gi
+        storage: 1500Gi
+      baseImage: hub.pingcap.net/qa/tikv
+    tidb:
+      replicas: 1
+      maxReplicas: 1
+      requests:
+        cpu: 8000m
+        memory: 16Gi
+      limits:
+        cpu: 8000m
+        memory: 16Gi
+      baseImage: hub.pingcap.net/qa/tidb
+- name: tools
+  type: WORKLOAD_NODE
+  spec:
+    container:
+      name: tools
+      image: hub.pingcap.net/perf_testing/bench-toolset
+      command:
+      - tail
+      - "-f"
+      - "/dev/null"
+      resources:
+        requests:
+          cpu: 8000m
+          memory: 16Gi
