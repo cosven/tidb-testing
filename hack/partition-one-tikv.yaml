@@ -1,0 +1,19 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: partition-one-tikv
+spec:
+  action: partition
+  mode: all
+  selector:
+    pods:
+      cosven-debug-5544d:
+        - tc-tikv-2
+  direction: both
+  target:
+    mode: all
+    selector:
+      pods:
+        cosven-debug-5544d:
+          - tc-tikv-0
+          - tc-tikv-1
