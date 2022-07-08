@@ -1,0 +1,37 @@
+global:
+  user: "tidb"
+  ssh_port: 22
+  deploy_dir: "/data0/t111/deploy"
+  data_dir: "/data0/t111/data"
+  arch: "amd64"
+
+monitored:
+  node_exporter_port: 19100
+  blackbox_exporter_port: 19115
+
+server_configs:
+  tikv:
+    raftstore.apply-pool-size: 1
+
+pd_servers:
+  - host: 0.0.0.0
+    client_port: 12379
+    peer_port: 12380
+
+tidb_servers:
+  - host: 0.0.0.0
+    port: 10160
+    status_port: 10180
+
+tikv_servers:
+  - host: 0.0.0.0
+    port: 14000
+    status_port: 11080
+
+monitoring_servers:
+  - host: 0.0.0.0
+    port: 19090
+
+grafana_servers:
+  - host: 0.0.0.0
+    port: 13000
