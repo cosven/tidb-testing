@@ -57,7 +57,7 @@ def cook_repo_with_defaults(repo):
 def cook_binary_url(component, sha1):
     tar_name = f'{component}-server'
     return f'http://fileserver.pingcap.net/download/builds/pingcap/'\
-        f'{component}/{sha1}/centos7/{tar_name}.tar.gz'
+        f'{component}/pr/{sha1}/centos7/{tar_name}.tar.gz'
 
 
 async def list_repo_latest_commits(
