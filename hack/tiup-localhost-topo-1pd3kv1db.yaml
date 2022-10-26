@@ -1,0 +1,54 @@
+global:
+  user: "root"
+  ssh_port: 22
+  deploy_dir: "/home/data0/t111/deploy"
+  data_dir: "/home/data0/t111/data"
+  arch: "amd64"
+
+monitored:
+  node_exporter_port: 19100
+  blackbox_exporter_port: 19115
+
+server_configs:
+  tikv:
+    raftstore.apply-pool-size: 1
+  pd:
+    replication.location-labels: ["host"]
+
+pd_servers:
+  - host: 172.16.4.164
+    client_port: 12379
+    peer_port: 12380
+
+tidb_servers:
+  - host: 172.16.4.164
+    port: 10160
+    status_port: 10180
+
+tikv_servers:
+  - host: 172.16.4.164
+    port: 14000
+    status_port: 11080
+    config:
+      server.labels:
+        host: h1
+  - host: 172.16.4.164
+    port: 14001
+    status_port: 11081
+    config:
+      server.labels:
+        host: h1
+  - host: 172.16.4.164
+    port: 14002
+    status_port: 11082
+    config:
+      server.labels:
+        host: h1
+
+monitoring_servers:
+  - host: 172.16.4.164
+    port: 19090
+
+grafana_servers:
+  - host: 172.16.4.164
+    port: 13000

@@ -1,0 +1,21 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: random-partition-tikv-every-hour
+spec:
+  schedule: '@hourly'
+  concurrencyPolicy: 'Forbid'
+  type: 'NetworkChaos'
+  networkChaos:
+    action: partition
+    mode: one
+    selector:
+      labelSelectors:
+        app.kubernetes.io/component: tikv
+    duration: '15s'
+    direction: both
+    target:
+      mode: all
+      selector:
+        labelSelectors:
+          app.kubernetes.io/component: tikv
