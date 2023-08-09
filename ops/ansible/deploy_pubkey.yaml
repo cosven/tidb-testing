@@ -1,0 +1,16 @@
+# ansible-playbook -i hosts.ini deploy_pubkey.yaml -k --extra-vars="pubkey='$(cat ~/.ssh/id_rsa.pub)'"
+
+- hosts: all
+  tasks:
+  - name: make direcotry
+    file:
+      path: "/root/.ssh"
+      state: directory
+  - name: create file authorized_keys if not exist
+    file:
+      path: "/root/.ssh/authorized_keys"
+      state: touch
+  - name: ensure pubkey exists
+    lineinfile:
+      path: "/root/.ssh/authorized_keys"
+      line: "{{ pubkey }}"
